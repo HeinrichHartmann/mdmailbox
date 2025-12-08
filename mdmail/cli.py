@@ -86,8 +86,8 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
     "--output",
     "-o",
     type=click.Path(path_type=Path),
-    default=Path.home() / ".mdmail" / "inbox",
-    help="Output directory (default: ~/.mdmail/inbox)",
+    default=None,
+    help="Output directory (default: ~/Mdmail/inbox)",
 )
 @click.option(
     "--limit",
@@ -100,8 +100,11 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
     "--account",
     help="Account name (auto-detected from path if not specified)",
 )
-def import_cmd(maildir: Path, output: Path, limit: int | None, account: str | None):
+def import_cmd(maildir: Path, output: Path | None, limit: int | None, account: str | None):
     """Import emails from Maildir to mdmail format."""
+    if output is None:
+        output = Path.home() / "Mdmail" / "inbox"
+
     click.echo(f"Importing from: {maildir}")
     click.echo(f"Output to: {output}")
     if limit:

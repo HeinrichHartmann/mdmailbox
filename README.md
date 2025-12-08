@@ -129,7 +129,7 @@ mdmail import
 mdmail import --maildir ~/Maildir
 
 # Import to custom output directory
-mdmail import -o ~/.mdmail/inbox
+mdmail import -o ~/Mdmail/inbox
 
 # Limit number of emails
 mdmail import -n 100
@@ -194,16 +194,11 @@ attachments:
 ## Directory Structure
 
 ```
-~/.mdmail/
-├── config.yaml
-├── accounts/
-│   └── gmail/
-│       ├── inbox/      # received
-│       ├── sent/       # sent
-│       └── archive/    # archived
+~/Mdmail/
+├── inbox/              # imported/received emails
 ├── drafts/             # work in progress
-├── outbox/             # ready to send
-└── templates/          # reusable templates
+├── sent/               # successfully sent
+└── outbox/             # queued for sending
 ```
 
 ## Configuration
