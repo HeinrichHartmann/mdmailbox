@@ -13,6 +13,31 @@ class Credential:
     password: str
 
 
+def normalize_gmail(email: str) -> str:
+    """Normalize Gmail address for matching.
+
+    Gmail ignores dots and everything after + in the local part.
+    e.g., h.hartmann+news@gmail.com -> hhartmann@gmail.com
+    """
+    if "@" not in email:
+        return email
+
+    local, domain = email.rsplit("@", 1)
+
+    # Only normalize gmail addresses
+    if domain.lower() not in ("gmail.com", "googlemail.com"):
+        return email.lower()
+
+    # Remove everything after +
+    if "+" in local:
+        local = local.split("+")[0]
+
+    # Remove dots
+    local = local.replace(".", "")
+
+    return f"{local}@{domain}".lower()
+
+
 def parse_authinfo(path: Path) -> list[Credential]:
     """Parse .authinfo file into list of credentials.
 
@@ -54,6 +79,7 @@ def find_credential_by_email(email: str, path: Path | None = None) -> Credential
     """Find SMTP credential for a given email address.
 
     Looks up by matching the login field to the email address.
+    For Gmail addresses, normalizes before matching (removes dots and +suffix).
 
     Args:
         email: The email address to find credentials for
@@ -72,9 +98,16 @@ def find_credential_by_email(email: str, path: Path | None = None) -> Credential
         return None
 
     credentials = parse_authinfo(path)
+    normalized_email = normalize_gmail(email)
 
+    # First try exact match
     for cred in credentials:
         if cred.login == email:
+            return cred
+
+    # Then try normalized match (for Gmail)
+    for cred in credentials:
+        if normalize_gmail(cred.login) == normalized_email:
             return cred
 
     return None

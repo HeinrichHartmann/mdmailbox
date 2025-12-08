@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from mdmail.authinfo import parse_authinfo, find_credential_by_email, Credential
+from mdmail.authinfo import parse_authinfo, find_credential_by_email, Credential, normalize_gmail
 from mdmail.email import Email
 from mdmail.smtp import send_email
 from mdmail.importer import sanitize_filename, generate_filename, parse_rfc822, import_maildir
@@ -74,6 +74,33 @@ class TestAuthinfo:
 
         cred = find_credential_by_email("unknown@example.com", authinfo)
 
+        assert cred is None
+
+    def test_find_credential_gmail_normalized(self, tmp_path):
+        """Test Gmail address normalization (dots and +suffix ignored)."""
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine smtp.gmail.com login hhartmann1729@gmail.com password secret\n"
+        )
+
+        # With dots
+        cred = find_credential_by_email("h.hartmann.1729@gmail.com", authinfo)
+        assert cred is not None
+        assert cred.password == "secret"
+
+        # With +suffix
+        cred = find_credential_by_email("hhartmann1729+news@gmail.com", authinfo)
+        assert cred is not None
+
+        # With both
+        cred = find_credential_by_email("h.hartmann.1729+test@gmail.com", authinfo)
+        assert cred is not None
+
+        # Non-gmail should NOT normalize
+        authinfo.write_text(
+            "machine smtp.example.com login user@example.com password pass\n"
+        )
+        cred = find_credential_by_email("u.ser@example.com", authinfo)
         assert cred is None
 
 
