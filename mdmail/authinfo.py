@@ -75,11 +75,27 @@ def parse_authinfo(path: Path) -> list[Credential]:
     return credentials
 
 
+def matches_wildcard(pattern: str, email: str) -> bool:
+    """Check if email matches a wildcard pattern like *@domain.com."""
+    if not pattern.startswith("*@"):
+        return False
+
+    if "@" not in email:
+        return False
+
+    pattern_domain = pattern[2:].lower()  # strip "*@"
+    email_domain = email.rsplit("@", 1)[1].lower()
+
+    return pattern_domain == email_domain
+
+
 def find_credential_by_email(email: str, path: Path | None = None) -> Credential | None:
     """Find SMTP credential for a given email address.
 
-    Looks up by matching the login field to the email address.
-    For Gmail addresses, normalizes before matching (removes dots and +suffix).
+    Lookup order:
+    1. Exact match
+    2. Gmail normalized match (dots and +suffix ignored)
+    3. Wildcard domain match (*@domain.com)
 
     Args:
         email: The email address to find credentials for
@@ -108,6 +124,11 @@ def find_credential_by_email(email: str, path: Path | None = None) -> Credential
     # Then try normalized match (for Gmail)
     for cred in credentials:
         if normalize_gmail(cred.login) == normalized_email:
+            return cred
+
+    # Then try wildcard domain match (*@domain.com)
+    for cred in credentials:
+        if matches_wildcard(cred.login, email):
             return cred
 
     return None

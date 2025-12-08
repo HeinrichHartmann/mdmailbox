@@ -103,6 +103,45 @@ class TestAuthinfo:
         cred = find_credential_by_email("u.ser@example.com", authinfo)
         assert cred is None
 
+    def test_find_credential_wildcard_domain(self, tmp_path):
+        """Test wildcard domain matching (*@domain.com)."""
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine smtp.migadu.com login *@heinrichhartmann.com password secret\n"
+        )
+
+        # Any user at the domain should match
+        cred = find_credential_by_email("heinrich@heinrichhartmann.com", authinfo)
+        assert cred is not None
+        assert cred.password == "secret"
+        assert cred.machine == "smtp.migadu.com"
+
+        cred = find_credential_by_email("hello@heinrichhartmann.com", authinfo)
+        assert cred is not None
+
+        cred = find_credential_by_email("contact@heinrichhartmann.com", authinfo)
+        assert cred is not None
+
+        # Different domain should NOT match
+        cred = find_credential_by_email("user@otherdomain.com", authinfo)
+        assert cred is None
+
+    def test_find_credential_exact_before_wildcard(self, tmp_path):
+        """Test that exact match takes precedence over wildcard."""
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine smtp.example.com login specific@example.com password exact\n"
+            "machine smtp.example.com login *@example.com password wildcard\n"
+        )
+
+        # Exact match should win
+        cred = find_credential_by_email("specific@example.com", authinfo)
+        assert cred.password == "exact"
+
+        # Other addresses use wildcard
+        cred = find_credential_by_email("other@example.com", authinfo)
+        assert cred.password == "wildcard"
+
 
 class TestEmailParsing:
     """Tests for Email YAML frontmatter parsing."""
