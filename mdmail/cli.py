@@ -1,10 +1,13 @@
 """Command-line interface for mdmail."""
 
 from pathlib import Path
+from datetime import datetime
 import os
+import shutil
 import click
 
 from .email import Email
+from .importer import sanitize_filename
 from .smtp import send_email
 from .authinfo import parse_authinfo, find_credential_by_email
 from .importer import import_maildir
@@ -69,8 +72,36 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
     result = send_email(email, authinfo_path=authinfo, port=port)
 
     if result.success:
+        # Update email with message-id and date from send
+        email.message_id = result.message_id
+        if not email.date:
+            email.date = datetime.now().astimezone().isoformat()
+
+        # Move to sent folder
+        sent_dir = Path.home() / "Mdmail" / "sent"
+        sent_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate sent filename with timestamp
+        now = datetime.now()
+        subject_slug = sanitize_filename(email.subject, max_len=40)
+        sent_filename = f"{now.strftime('%Y-%m-%d')}-{subject_slug}.md"
+        sent_path = sent_dir / sent_filename
+
+        # Avoid overwriting
+        if sent_path.exists():
+            i = 1
+            stem = sent_path.stem
+            while sent_path.exists():
+                sent_path = sent_dir / f"{stem}-{i}.md"
+                i += 1
+
+        # Save updated email to sent folder and remove original
+        email.save(sent_path)
+        file.unlink()
+
         click.echo(f"Sent: {email.subject}")
         click.echo(f"Message-ID: {result.message_id}")
+        click.echo(f"Moved to: {sent_path}")
     else:
         raise click.ClickException(result.message)
 
