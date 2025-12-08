@@ -20,6 +20,7 @@
 
           shellHook = ''
             export UV_PYTHON_PREFERENCE=only-system
+            export UV_PYTHON_DOWNLOADS=never
           '';
         };
       });
