@@ -7,6 +7,7 @@ import click
 from .email import Email
 from .smtp import send_email
 from .authinfo import parse_authinfo, find_credential_by_email
+from .importer import import_maildir
 
 
 @click.group()
@@ -72,6 +73,52 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
         click.echo(f"Message-ID: {result.message_id}")
     else:
         raise click.ClickException(result.message)
+
+
+@main.command(name="import")
+@click.option(
+    "--maildir",
+    type=click.Path(exists=True, path_type=Path),
+    default=Path.home() / "mail",
+    help="Path to Maildir root (default: ~/mail)",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    default=Path.home() / ".mdmail" / "inbox",
+    help="Output directory (default: ~/.mdmail/inbox)",
+)
+@click.option(
+    "--limit",
+    "-n",
+    type=int,
+    default=None,
+    help="Max number of emails to import (default: all)",
+)
+@click.option(
+    "--account",
+    help="Account name (auto-detected from path if not specified)",
+)
+def import_cmd(maildir: Path, output: Path, limit: int | None, account: str | None):
+    """Import emails from Maildir to mdmail format."""
+    click.echo(f"Importing from: {maildir}")
+    click.echo(f"Output to: {output}")
+    if limit:
+        click.echo(f"Limit: {limit}")
+
+    created = import_maildir(
+        maildir_root=maildir,
+        output_dir=output,
+        account=account,
+        limit=limit,
+    )
+
+    click.echo(f"Imported {len(created)} emails")
+    if created:
+        click.echo("Recent imports:")
+        for p in created[-5:]:
+            click.echo(f"  {p.name}")
 
 
 @main.command()

@@ -113,15 +113,41 @@ Done. The file moves to `sent/`.
 
 | Command | Description |
 |---------|-------------|
-| `mdmail fetch` | Download emails from server |
+| `mdmail import` | Import emails from Maildir (e.g., mbsync) |
 | `mdmail send <file>` | Send an email |
-| `mdmail send --all` | Send everything in outbox/ |
-| `mdmail list inbox` | List received emails |
-| `mdmail list drafts` | List drafts |
-| `mdmail search "from:alice"` | Search emails |
-| `mdmail new` | Create a new draft |
-| `mdmail reply <file>` | Reply to an email |
-| `mdmail sync` | Full bidirectional sync |
+| `mdmail credentials` | Show configured SMTP credentials |
+
+### Import from Maildir
+
+If you use `mbsync` or similar tools to sync email locally, import them:
+
+```bash
+# Import all emails from ~/mail (default)
+mdmail import
+
+# Import from custom location
+mdmail import --maildir ~/Maildir
+
+# Import to custom output directory
+mdmail import -o ~/.mdmail/inbox
+
+# Limit number of emails
+mdmail import -n 100
+```
+
+Imported emails include metadata:
+
+```yaml
+---
+from: sender@example.com
+to: recipient@example.com
+subject: Meeting notes
+date: '2025-01-23T10:30:00+00:00'
+message-id: <abc123@mail.example.com>
+account: gmail-hhartmann1729      # auto-detected from path
+original-hash: 5123e59f7de5e2cc... # SHA256 of original file
+---
+```
 
 ## File Format
 
@@ -182,36 +208,28 @@ attachments:
 
 ## Configuration
 
-### Multiple accounts
+### Credentials via .authinfo
 
-```yaml
-accounts:
-  gmail:
-    email: personal@gmail.com
-    # ...
+mdmail uses the standard `.authinfo` format for SMTP credentials:
 
-  work:
-    email: me@company.com
-    # ...
-
-defaults:
-  account: gmail    # default for sending
+```
+# ~/.authinfo
+machine smtp.gmail.com login you@gmail.com password your-app-password
+machine smtp.migadu.com login you@migadu.com password your-password
 ```
 
-### Credential options
+When sending, mdmail looks up credentials by matching the `from:` address to the `login` field.
 
-```yaml
-# Option 1: File (recommended)
-password_file: ~/.mdmail/gmail.key
+Set a custom path via environment variable:
 
-# Option 2: Environment variable
-password_env: GMAIL_PASSWORD
+```bash
+export AUTHINFO_FILE=~/box/secrets/.authinfo
+```
 
-# Option 3: Command output (e.g., password manager)
-password_cmd: "pass show email/gmail"
+View configured credentials:
 
-# Option 4: System keyring
-password_keyring: true
+```bash
+mdmail credentials --authinfo ~/.authinfo
 ```
 
 ## Examples

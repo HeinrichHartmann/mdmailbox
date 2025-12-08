@@ -2,12 +2,14 @@
 
 import tempfile
 from pathlib import Path
+from datetime import datetime
 
 import pytest
 
 from mdmail.authinfo import parse_authinfo, find_credential_by_email, Credential
 from mdmail.email import Email
 from mdmail.smtp import send_email
+from mdmail.importer import sanitize_filename, generate_filename, parse_rfc822, import_maildir
 
 
 class TestAuthinfo:
@@ -282,3 +284,114 @@ This should not be sent.
 
         assert not result.success
         assert "No credentials found" in result.message
+
+
+class TestImporter:
+    """Tests for Maildir import functionality."""
+
+    def test_sanitize_filename_basic(self):
+        """Test basic filename sanitization."""
+        assert sanitize_filename("Hello World") == "hello-world"
+        assert sanitize_filename("Test@Email.com") == "test-email-com"
+        assert sanitize_filename("Re: Meeting Notes!!!") == "re-meeting-notes"
+
+    def test_sanitize_filename_truncation(self):
+        """Test filename truncation."""
+        long_text = "a" * 100
+        result = sanitize_filename(long_text, max_len=40)
+        assert len(result) <= 40
+
+    def test_sanitize_filename_empty(self):
+        """Test empty input."""
+        assert sanitize_filename("") == "unknown"
+        assert sanitize_filename("!!!") == "unknown"
+
+    def test_generate_filename_basic(self):
+        """Test basic filename generation."""
+        date = datetime(2025, 1, 23, 10, 30)
+        filename = generate_filename(
+            date=date,
+            from_addr="sender@example.com",
+            subject="Test Subject",
+        )
+        assert filename == "2025-01-23-sender-test-subject.md"
+
+    def test_generate_filename_no_date(self):
+        """Test filename generation without date."""
+        filename = generate_filename(
+            date=None,
+            from_addr="sender@example.com",
+            subject="Test",
+        )
+        assert filename.startswith("0000-00-00-")
+
+    def test_generate_filename_collision(self):
+        """Test filename deduplication."""
+        date = datetime(2025, 1, 23)
+        existing = {"2025-01-23-sender-test.md"}
+
+        filename = generate_filename(
+            date=date,
+            from_addr="sender@example.com",
+            subject="Test",
+            message_id="<unique123@example.com>",
+            existing_names=existing,
+        )
+
+        assert filename != "2025-01-23-sender-test.md"
+        assert filename.endswith(".md")
+        assert "2025-01-23-sender-test-" in filename
+
+    def test_parse_rfc822(self, tmp_path):
+        """Test parsing RFC822 email file."""
+        email_file = tmp_path / "test.eml"
+        email_file.write_bytes(b"""From: sender@example.com
+To: recipient@example.com
+Subject: Test Email
+Message-ID: <test123@example.com>
+Date: Thu, 23 Jan 2025 10:30:00 +0000
+
+This is the body.
+""")
+
+        imported = parse_rfc822(email_file)
+
+        assert imported.email.from_addr == "sender@example.com"
+        assert imported.email.to == ["recipient@example.com"]
+        assert imported.email.subject == "Test Email"
+        assert imported.email.message_id == "<test123@example.com>"
+        assert "This is the body" in imported.email.body
+        assert imported.original_hash is not None
+        assert len(imported.original_hash) == 64  # SHA256 hex
+
+    def test_import_maildir(self, tmp_path):
+        """Test importing from Maildir structure."""
+        # Create Maildir structure
+        maildir = tmp_path / "mail"
+        account_dir = maildir / "test-account" / "INBOX" / "cur"
+        account_dir.mkdir(parents=True)
+
+        # Create test email
+        email_file = account_dir / "1234567890.test:2,S"
+        email_file.write_bytes(b"""From: alice@example.com
+To: bob@example.com
+Subject: Hello Bob
+Message-ID: <hello123@example.com>
+Date: Wed, 22 Jan 2025 15:00:00 +0000
+
+Hi Bob, how are you?
+""")
+
+        # Import
+        output_dir = tmp_path / "output"
+        created = import_maildir(maildir, output_dir)
+
+        assert len(created) == 1
+        assert created[0].exists()
+
+        # Verify content
+        email = Email.from_file(created[0])
+        assert email.from_addr == "alice@example.com"
+        assert email.subject == "Hello Bob"
+        assert email.account == "test-account"
+        assert email.original_hash is not None

@@ -25,6 +25,10 @@ class Email:
     in_reply_to: str | None = None
     references: list[str] = field(default_factory=list)
 
+    # Import metadata
+    account: str | None = None          # Source account (e.g., "gmail-hhartmann1729")
+    original_hash: str | None = None    # SHA256 of original RFC822 file (for dedup)
+
     # Source file path (if loaded from file)
     source_path: Path | None = None
 
@@ -87,6 +91,8 @@ class Email:
             date=headers.get("date"),
             in_reply_to=headers.get("in-reply-to"),
             references=references,
+            account=headers.get("account"),
+            original_hash=headers.get("original-hash"),
         )
 
     def to_mime(self) -> EmailMessage:
@@ -141,6 +147,10 @@ class Email:
             headers["in-reply-to"] = self.in_reply_to
         if self.references:
             headers["references"] = self.references
+        if self.account:
+            headers["account"] = self.account
+        if self.original_hash:
+            headers["original-hash"] = self.original_hash
 
         frontmatter = yaml.dump(headers, default_flow_style=False, allow_unicode=True)
         return f"---\n{frontmatter}---\n\n{self.body}\n"
