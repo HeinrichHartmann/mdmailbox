@@ -126,6 +126,70 @@ def import_cmd(maildir: Path, output: Path | None, limit: int | None, account: s
 
 @main.command()
 @click.option(
+    "--to", "-t",
+    help="Recipient email address",
+)
+@click.option(
+    "--from", "-f", "from_addr",
+    help="Sender email address",
+)
+@click.option(
+    "--subject", "-s",
+    help="Email subject",
+)
+@click.option(
+    "--cc",
+    help="CC recipient(s), comma-separated",
+)
+@click.option(
+    "--output", "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output file path (default: ~/Mdmail/drafts/<subject>.md)",
+)
+def new(to: str | None, from_addr: str | None, subject: str | None, cc: str | None, output: Path | None):
+    """Create a new email draft."""
+    drafts_dir = Path.home() / "Mdmail" / "drafts"
+    drafts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build email
+    to_list = [to] if to else []
+    cc_list = [c.strip() for c in cc.split(",")] if cc else []
+
+    email = Email(
+        from_addr=from_addr or "",
+        to=to_list,
+        subject=subject or "",
+        body="\n",
+        cc=cc_list,
+    )
+
+    # Determine output path
+    if output is None:
+        if subject:
+            # Sanitize subject for filename
+            from .importer import sanitize_filename
+            filename = sanitize_filename(subject, max_len=50) + ".md"
+        else:
+            filename = "new-draft.md"
+        output = drafts_dir / filename
+
+        # Avoid overwriting
+        if output.exists():
+            i = 1
+            stem = output.stem
+            while output.exists():
+                output = drafts_dir / f"{stem}-{i}.md"
+                i += 1
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    email.save(output)
+
+    click.echo(f"Created: {output}")
+
+
+@main.command()
+@click.option(
     "--authinfo",
     type=click.Path(exists=True, path_type=Path),
     help="Path to .authinfo file (default: ~/.authinfo or $AUTHINFO_FILE)",
