@@ -56,7 +56,9 @@ def send_email(
         with smtplib.SMTP(credential.machine, port) as server:
             if use_tls:
                 server.starttls()
-            server.login(credential.login, credential.password)
+            # Only login if server supports AUTH
+            if server.has_extn("auth"):
+                server.login(credential.login, credential.password)
             server.send_message(mime_msg, to_addrs=recipients)
 
         return SendResult(

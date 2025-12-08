@@ -19,4 +19,5 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "smtpdfix>=0.5.3",
 ]
