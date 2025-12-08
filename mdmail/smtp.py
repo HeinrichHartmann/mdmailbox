@@ -54,8 +54,10 @@ def send_email(
 
     try:
         with smtplib.SMTP(credential.machine, port) as server:
+            server.ehlo()
             if use_tls:
                 server.starttls()
+                server.ehlo()  # Re-identify after STARTTLS
             # Only login if server supports AUTH
             if server.has_extn("auth"):
                 server.login(credential.login, credential.password)
