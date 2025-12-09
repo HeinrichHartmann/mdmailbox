@@ -1,4 +1,6 @@
-# mdmail - Email as Files with YAML Frontmatter
+# mdmail - Design Document
+
+This document captures the original vision and future ideas for mdmail.
 
 ## Overview
 
@@ -62,8 +64,6 @@ x-custom: value
 ---
 
 Message body here.
-
-Can include **markdown** formatting if content-type is text/markdown.
 ```
 
 ### Multiple Recipients
@@ -79,7 +79,7 @@ subject: Team update
 ---
 ```
 
-### Attachments
+### Attachments (Future)
 
 ```yaml
 ---
@@ -98,28 +98,45 @@ Please find the attached documents.
 ## Directory Structure
 
 ```
-~/mdmail/                     # or configured location
-├── config.yaml               # account configuration
-├── accounts/
-│   ├── gmail/
-│   │   ├── inbox/            # received emails
-│   │   ├── sent/             # successfully sent
-│   │   └── archive/          # archived emails
-│   └── migadu/
-│       ├── inbox/
-│       ├── sent/
-│       └── archive/
-├── drafts/                   # work in progress (not account-specific)
-├── outbox/                   # queued for sending
-└── templates/                # reusable email templates
+~/Mdmail/
+├── inbox/              # imported/received emails
+├── drafts/             # work in progress
+├── sent/               # successfully sent
+└── outbox/             # queued for sending (future)
 ```
 
 ## Configuration
 
-### config.yaml
+### Credentials via .authinfo
+
+mdmail uses the standard `.authinfo` format for SMTP credentials:
+
+```
+# ~/.authinfo
+machine smtp.gmail.com login you@gmail.com password your-app-password
+machine smtp.migadu.com login you@migadu.com password your-password
+
+# Wildcard domain support
+machine smtp.migadu.com login *@yourdomain.com password shared-password
+```
+
+When sending, mdmail looks up credentials by matching the `from:` address to the `login` field.
+
+Features:
+- Exact match lookup
+- Gmail address normalization (dots and +suffix ignored)
+- Wildcard domain matching (*@domain.com)
+
+Set a custom path via environment variable:
+
+```bash
+export AUTHINFO_FILE=~/box/secrets/.authinfo
+```
+
+### Future: config.yaml
 
 ```yaml
-# ~/mdmail/config.yaml
+# ~/Mdmail/config.yaml
 
 defaults:
   account: gmail              # default account for sending
@@ -151,117 +168,50 @@ accounts:
       folders: [INBOX, "[Gmail]/Sent Mail"]
       max_messages: 100                       # per folder
       max_age_days: 30                        # optional time limit
-
-  migadu:
-    email: heinrich@signals.io
-    name: Heinrich Hartmann
-
-    imap:
-      host: imap.migadu.com
-      port: 993
-      ssl: true
-
-    smtp:
-      host: smtp.migadu.com
-      port: 587
-      starttls: true
-
-    password_file: ~/secrets/migadu.key
 ```
 
 ## Command-Line Interface
 
-### Fetching Email
+### Implemented
+
+| Command | Description |
+|---------|-------------|
+| `mdmail send <file>` | Send an email file |
+| `mdmail send --dry-run <file>` | Validate without sending |
+| `mdmail import` | Import emails from Maildir |
+| `mdmail new` | Create a new email draft |
+| `mdmail credentials` | Show configured SMTP credentials |
+
+### Future Commands
 
 ```bash
-# Fetch from all accounts
+# Fetching Email (requires IMAP implementation)
 mdmail fetch
-
-# Fetch from specific account
 mdmail fetch --account gmail
-
-# Fetch with options
 mdmail fetch --account gmail --folder INBOX --limit 50
 
-# Fetch and convert to markdown (extract plain text, convert HTML)
-mdmail fetch --format markdown
-```
+# Full bidirectional sync
+mdmail sync
+mdmail sync --account gmail
+mdmail sync --pull-only              # IMAP -> local
+mdmail sync --push-only              # local -> SMTP (send outbox)
 
-### Sending Email
-
-```bash
-# Send a specific file
-mdmail send drafts/meeting-followup.md
-
-# Send all files in outbox
-mdmail send --all
-
-# Dry run (validate without sending)
-mdmail send drafts/meeting.md --dry-run
-
-# Send and specify account (overrides file header)
-mdmail send drafts/meeting.md --account migadu
-```
-
-### Managing Email Lifecycle
-
-```bash
-# Create new draft from template
-mdmail new                           # interactive
-mdmail new --to alice@example.com --subject "Hello"
-mdmail new --template meeting-invite
-
-# Move draft to outbox (ready to send)
+# Managing Email Lifecycle
 mdmail queue drafts/meeting.md       # moves to outbox/
-
-# List emails by status
 mdmail list inbox
 mdmail list drafts
 mdmail list outbox
-mdmail list sent --account gmail --limit 10
-
-# Search across all emails
 mdmail search "from:alice subject:meeting"
-mdmail search --query "project update" --folder inbox
-
-# Archive email
 mdmail archive inbox/msg-12345.md    # moves to archive/
 
 # Reply to email (creates draft with headers pre-filled)
 mdmail reply inbox/msg-12345.md
 mdmail reply inbox/msg-12345.md --all  # reply-all
-```
 
-### Sync Operations
-
-```bash
-# Full bidirectional sync
-mdmail sync
-
-# Sync specific account
-mdmail sync --account gmail
-
-# One-way sync
-mdmail sync --pull-only              # IMAP -> local
-mdmail sync --push-only              # local -> SMTP (send outbox)
-```
-
-### Utility Commands
-
-```bash
-# Validate email file format
+# Utility Commands
 mdmail validate drafts/meeting.md
-
-# Convert between formats
 mdmail convert inbox/msg.md --to html > msg.html
 mdmail convert inbox/msg.md --to rfc822 > msg.eml
-
-# Import existing email file
-mdmail import message.eml --to inbox/
-
-# Show configuration
-mdmail config show
-mdmail config accounts
 ```
 
 ## Email Lifecycle
@@ -272,11 +222,6 @@ mdmail config accounts
                     ┌─────────┐
                     │ drafts/ │  ← mdmail new, manual editing
                     └────┬────┘
-                         │ mdmail queue
-                         ▼
-                    ┌─────────┐
-                    │ outbox/ │  ← ready to send
-                    └────┬────┘
                          │ mdmail send
                          ▼
               ┌──────────┴──────────┐
@@ -284,12 +229,12 @@ mdmail config accounts
          [SMTP OK]            [SMTP Error]
               │                     │
               ▼                     ▼
-         ┌─────────┐          stays in outbox
-         │  sent/  │          (error logged in header)
+         ┌─────────┐          error message
+         │  sent/  │
          └─────────┘
 ```
 
-### Receiving
+### Receiving (Future)
 
 ```
     [IMAP Server]
@@ -308,34 +253,26 @@ mdmail config accounts
 
 ### File Naming Convention
 
-**Received emails:**
+**Imported/received emails:**
 ```
-inbox/2025-12-08-143052-meeting-followup-abc123.md
-      └─────┬─────┘ └──────┬───────┘ └──┬──┘
-          date        subject slug    msg-id hash
+inbox/2025-01-23-sender-subject-slug.md
+      └────┬────┘└──┬──┘└────┬─────┘
+          date    from    subject
 ```
 
-**Drafts and sent:**
+**Sent emails:**
 ```
-drafts/meeting-followup.md           # user-chosen name
-sent/2025-12-08-143052-meeting-followup.md  # timestamped on send
+sent/2025-12-08-subject-slug.md  # timestamped on send
 ```
 
 ## Python API
 
-### Installation
-
-```bash
-pip install mdmail
-```
-
-### Basic Usage
+### Current API
 
 ```python
-from mdmail import Email, Account, Config
-
-# Load configuration
-config = Config.load("~/mdmail/config.yaml")
+from mdmail import Email
+from mdmail.authinfo import find_credential_by_email
+from mdmail.smtp import send_email
 
 # Parse email file
 email = Email.from_file("drafts/meeting.md")
@@ -344,65 +281,63 @@ email = Email.from_file("drafts/meeting.md")
 print(email.from_addr)    # "me@example.com"
 print(email.to)           # ["recipient@example.com"]
 print(email.subject)      # "Subject line"
-
-# Access body
-print(email.body)         # raw content
-print(email.body_html)    # converted to HTML if markdown
+print(email.body)         # message content
 
 # Modify email
 email.subject = "Updated subject"
-email.save()              # write back to file
+email.save(Path("drafts/meeting.md"))
+
+# Create new email
+email = Email(
+    from_addr="me@example.com",
+    to=["you@example.com"],
+    subject="Hello",
+    body="Hi there!"
+)
+email.save(Path("drafts/hello.md"))
 
 # Send email
-account = config.get_account("gmail")
-result = account.send(email)
+result = send_email(email, authinfo_path=Path("~/.authinfo"))
 if result.success:
-    email.move_to("sent/")
+    print(f"Sent! Message-ID: {result.message_id}")
 ```
 
-### Fetching Emails
+### Future API Extensions
 
 ```python
-from mdmail import Config, fetch_emails
+from mdmail import Config, Account
 
-config = Config.load()
+# Load configuration
+config = Config.load("~/Mdmail/config.yaml")
+
+# Get account and fetch emails
 account = config.get_account("gmail")
-
-# Fetch recent emails
 emails = account.fetch(folder="INBOX", limit=50)
 
 for email in emails:
     email.save_to("inbox/")
-```
-
-### Low-Level SMTP/IMAP
-
-```python
-from mdmail.smtp import SMTPClient
-from mdmail.imap import IMAPClient
-
-# Direct SMTP access
-with SMTPClient(host, port, user, password) as smtp:
-    smtp.send(email.to_rfc822())
 
 # Direct IMAP access
+from mdmail.imap import IMAPClient
+
 with IMAPClient(host, port, user, password) as imap:
     messages = imap.fetch_folder("INBOX", limit=100)
 ```
 
 ## Conversion Details
 
-### RFC822 to mdmail Format
+### RFC822 to mdmail Format (Import)
 
-When fetching from IMAP:
+When importing from Maildir:
 
 1. Parse RFC822 headers into YAML frontmatter
 2. Extract plain text body (prefer `text/plain` part)
 3. If only HTML, convert to markdown (optional)
 4. Save attachments to `attachments/` subfolder (optional)
-5. Generate filename from date + subject + message-id hash
+5. Generate filename from date + from + subject
+6. Compute SHA256 hash of original file for deduplication
 
-### mdmail Format to RFC822
+### mdmail Format to RFC822 (Send)
 
 When sending via SMTP:
 
@@ -413,43 +348,17 @@ When sending via SMTP:
 5. Encode as MIME multipart if attachments present
 6. Submit to SMTP server
 
-## Error Handling
-
-### Send Failures
-
-When SMTP submission fails, the email stays in `outbox/` with error info added:
-
-```yaml
----
-from: me@example.com
-to: recipient@example.com
-subject: Meeting
-status: outbox
-last_error: "SMTP 550: Recipient rejected"
-last_attempt: 2025-12-08T15:30:00+01:00
-attempts: 3
----
-```
-
-### Validation Errors
-
-```bash
-$ mdmail validate drafts/bad-email.md
-Error: Missing required header 'to'
-Error: Invalid email address format in 'from': 'not-an-email'
-```
-
 ## Integration Examples
 
 ### Git Workflow
 
 ```bash
-cd ~/mdmail
+cd ~/Mdmail
 git init
 echo "*.key" >> .gitignore
 
 # Commit sent emails
-mdmail send outbox/important-msg.md
+mdmail send drafts/important-msg.md
 git add sent/
 git commit -m "Sent: important-msg"
 ```
@@ -457,7 +366,6 @@ git commit -m "Sent: important-msg"
 ### LLM Integration
 
 ```python
-# Generate email with LLM
 import anthropic
 from mdmail import Email
 
@@ -471,16 +379,16 @@ response = client.messages.create(
 
 # Parse and save as draft
 email = Email.from_string(response.content[0].text)
-email.save_to("drafts/llm-followup.md")
+email.save(Path("drafts/llm-followup.md"))
 ```
 
 ### Cron/Systemd Automation
 
 ```bash
-# Periodic sync
+# Periodic sync (future)
 */15 * * * * mdmail sync --quiet
 
-# Auto-send outbox
+# Auto-send outbox (future)
 */5 * * * * mdmail send --all --quiet
 ```
 
@@ -488,13 +396,14 @@ email.save_to("drafts/llm-followup.md")
 
 ### Dependencies
 
-**Required (Python stdlib):**
-- `smtplib` - SMTP client
-- `imaplib` - IMAP client
-- `email` - RFC822 parsing/generation
+**Current:**
+- `pyyaml` - YAML parsing
+- `click` - CLI framework
+- `smtplib` (stdlib) - SMTP client
+- `email` (stdlib) - RFC822 parsing/generation
 
-**Optional:**
-- `pyyaml` - YAML parsing (or use stdlib `tomllib` for TOML config)
+**Future:**
+- `imaplib` (stdlib) - IMAP client
 - `markdown` - Markdown to HTML conversion
 - `html2text` - HTML to markdown conversion
 - `keyring` - System keyring integration
@@ -502,18 +411,20 @@ email.save_to("drafts/llm-followup.md")
 ### Security Considerations
 
 1. **Credentials:** Never store passwords in config.yaml directly. Use:
-   - File references (`password_file`)
-   - Environment variables (`password_env`)
-   - Command output (`password_cmd`)
-   - System keyring (`password_keyring`)
+   - `.authinfo` files with proper permissions
+   - Environment variables (`AUTHINFO_FILE`)
+   - Command output (future: `password_cmd`)
+   - System keyring (future: `password_keyring`)
 
-2. **Permissions:** Config and password files should be 600 (owner-only)
+2. **Permissions:** Authinfo files should be 600 (owner-only)
 
-3. **TLS:** Always use SSL/TLS or STARTTLS for IMAP/SMTP
+3. **TLS:** Always use STARTTLS for SMTP (port 587)
 
 ### Future Extensions
 
+- **IMAP fetch:** Download emails from IMAP servers
 - **PGP/GPG:** Sign and encrypt emails
+- **Attachments:** Support file attachments
 - **Filters:** Auto-archive, auto-label based on rules
 - **Search index:** Local full-text search (sqlite FTS)
 - **Web UI:** Simple local web interface

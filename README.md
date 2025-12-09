@@ -21,7 +21,7 @@ Best,
 Me
 ```
 
-That's it. Save this as `drafts/meeting.md`, run `mdmail send drafts/meeting.md`, and it's sent.
+Save this as `~/Mdmail/drafts/meeting.md`, run `mdmail send ~/Mdmail/drafts/meeting.md`, and it's sent.
 
 ## Why?
 
@@ -37,89 +37,67 @@ That's it. Save this as `drafts/meeting.md`, run `mdmail send drafts/meeting.md`
 pip install mdmail
 ```
 
+Or with uv:
+
+```bash
+uv tool install mdmail
+```
+
 ## Quick Start
 
-### 1. Configure your account
+### 1. Configure credentials
+
+Create `~/.authinfo` with your SMTP credentials:
+
+```
+machine smtp.gmail.com login you@gmail.com password your-app-password
+machine smtp.migadu.com login you@migadu.com password your-password
+```
+
+### 2. Create a draft
 
 ```bash
-mdmail init
+mdmail new --to friend@example.com --subject "Hello" --from you@gmail.com
 ```
 
-Or create `~/.mdmail/config.yaml` manually:
+This creates `~/Mdmail/drafts/hello.md`.
 
-```yaml
-accounts:
-  gmail:
-    email: you@gmail.com
-    smtp:
-      host: smtp.gmail.com
-      port: 587
-      starttls: true
-    imap:
-      host: imap.gmail.com
-      port: 993
-      ssl: true
-    password_file: ~/.mdmail/gmail.key
-```
+### 3. Edit and send
 
-### 2. Fetch your email
+Edit the draft in your favorite editor, then:
 
 ```bash
-mdmail fetch
+mdmail send ~/Mdmail/drafts/hello.md
 ```
 
-Emails appear as files in `~/.mdmail/accounts/gmail/inbox/`:
-
-```
-inbox/
-  2025-12-08-meeting-notes-a1b2c3.md
-  2025-12-08-project-update-d4e5f6.md
-  2025-12-07-welcome-g7h8i9.md
-```
-
-### 3. Read an email
-
-```bash
-cat ~/.mdmail/accounts/gmail/inbox/2025-12-08-meeting-notes-a1b2c3.md
-```
-
-Or use any text editor, `less`, `grep`, etc.
-
-### 4. Compose and send
-
-Create a file in `drafts/`:
-
-```bash
-cat > ~/.mdmail/drafts/hello.md << 'EOF'
----
-from: you@gmail.com
-to: friend@example.com
-subject: Hello!
----
-
-Just wanted to say hi.
-EOF
-```
-
-Send it:
-
-```bash
-mdmail send drafts/hello.md
-```
-
-Done. The file moves to `sent/`.
+The email is sent and moved to `~/Mdmail/sent/`.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `mdmail import` | Import emails from Maildir (e.g., mbsync) |
 | `mdmail send <file>` | Send an email |
+| `mdmail send --dry-run <file>` | Validate without sending |
+| `mdmail import` | Import emails from Maildir |
+| `mdmail new` | Create a new email draft |
 | `mdmail credentials` | Show configured SMTP credentials |
+
+### Send
+
+```bash
+# Send an email
+mdmail send ~/Mdmail/drafts/hello.md
+
+# Dry run (validate without sending)
+mdmail send --dry-run ~/Mdmail/drafts/hello.md
+
+# Use custom authinfo file
+mdmail send --authinfo ~/secrets/.authinfo ~/Mdmail/drafts/hello.md
+```
 
 ### Import from Maildir
 
-If you use `mbsync` or similar tools to sync email locally, import them:
+If you use `mbsync` or similar tools to sync email locally:
 
 ```bash
 # Import all emails from ~/mail (default)
@@ -135,18 +113,27 @@ mdmail import -o ~/Mdmail/inbox
 mdmail import -n 100
 ```
 
-Imported emails include metadata:
+### New Draft
 
-```yaml
----
-from: sender@example.com
-to: recipient@example.com
-subject: Meeting notes
-date: '2025-01-23T10:30:00+00:00'
-message-id: <abc123@mail.example.com>
-account: gmail-hhartmann1729      # auto-detected from path
-original-hash: 5123e59f7de5e2cc... # SHA256 of original file
----
+```bash
+# Create empty draft
+mdmail new
+
+# Create with fields pre-filled
+mdmail new --to alice@example.com --subject "Meeting" --from me@gmail.com
+
+# Specify output path
+mdmail new -o ~/Mdmail/drafts/custom-name.md
+```
+
+### Credentials
+
+```bash
+# List all configured credentials
+mdmail credentials
+
+# Look up credentials for specific email
+mdmail credentials --email you@gmail.com
 ```
 
 ## File Format
@@ -159,13 +146,11 @@ from: sender@example.com
 to: recipient@example.com
 subject: Subject line
 cc: optional@example.com
-date: 2025-12-08T15:30:00
+date: 2025-12-08T15:30:00+01:00
+message-id: <abc123@mail.example.com>
 ---
 
 Body content goes here.
-
-Can be plain text, **markdown**, or HTML.
-The file extension (.md, .txt, .html) hints at the format.
 ```
 
 ### Multiple recipients
@@ -179,149 +164,83 @@ cc: team@example.com
 ---
 ```
 
-### Attachments
-
-```yaml
----
-to: recipient@example.com
-subject: Files attached
-attachments:
-  - ./report.pdf
-  - ~/documents/image.png
----
-```
-
 ## Directory Structure
 
 ```
 ~/Mdmail/
-├── inbox/              # imported/received emails
+├── inbox/              # imported emails
 ├── drafts/             # work in progress
-├── sent/               # successfully sent
-└── outbox/             # queued for sending
+└── sent/               # successfully sent
 ```
 
 ## Configuration
 
 ### Credentials via .authinfo
 
-mdmail uses the standard `.authinfo` format for SMTP credentials:
+mdmail uses the standard `.authinfo` format:
 
 ```
 # ~/.authinfo
 machine smtp.gmail.com login you@gmail.com password your-app-password
 machine smtp.migadu.com login you@migadu.com password your-password
+
+# Wildcard domain support (for aliases)
+machine smtp.migadu.com login *@yourdomain.com password shared-password
 ```
 
-When sending, mdmail looks up credentials by matching the `from:` address to the `login` field.
+When sending, mdmail looks up credentials by matching the `from:` address.
+
+Features:
+- Exact match
+- Gmail normalization (dots and +suffix ignored for gmail.com)
+- Wildcard domain matching (*@domain.com)
 
 Set a custom path via environment variable:
 
 ```bash
-export AUTHINFO_FILE=~/box/secrets/.authinfo
-```
-
-View configured credentials:
-
-```bash
-mdmail credentials --authinfo ~/.authinfo
-```
-
-## Examples
-
-### Search emails
-
-```bash
-# Find emails from Alice
-mdmail search "from:alice"
-
-# Find emails about the project from last week
-mdmail search "subject:project date:7d"
-
-# Or just use grep
-grep -r "project" ~/.mdmail/accounts/gmail/inbox/
-```
-
-### Quick reply
-
-```bash
-mdmail reply inbox/question-from-bob.md
-# Opens your editor with headers pre-filled
-```
-
-### Send from script
-
-```bash
-#!/bin/bash
-cat > /tmp/alert.md << EOF
----
-from: alerts@myserver.com
-to: admin@example.com
-subject: Server Alert - $(date)
----
-
-Disk usage is above 90%.
-EOF
-
-mdmail send /tmp/alert.md
-```
-
-### Use with Git
-
-```bash
-cd ~/.mdmail
-git init
-git add sent/
-git commit -m "Email archive"
+export AUTHINFO_FILE=~/secrets/.authinfo
 ```
 
 ## Python API
 
 ```python
-from mdmail import Email, Config
-
-# Load config
-config = Config.load()
+from mdmail import Email
+from mdmail.smtp import send_email
+from pathlib import Path
 
 # Read an email
-email = Email.from_file("inbox/message.md")
+email = Email.from_file(Path("inbox/message.md"))
 print(email.subject)
 print(email.body)
 
-# Create and send
+# Create and save
 email = Email(
     from_addr="me@example.com",
     to=["you@example.com"],
     subject="Hello",
     body="Hi there!"
 )
-email.save_to("drafts/hello.md")
+email.save(Path("drafts/hello.md"))
 
-account = config.get_account("gmail")
-account.send(email)
+# Send
+result = send_email(email)
+if result.success:
+    print(f"Sent! Message-ID: {result.message_id}")
 ```
 
-## FAQ
+## Development
 
-**Q: Why not just use Gmail/Outlook/Apple Mail?**
+```bash
+# Run tests
+make test
 
-A: Those are great for most people. mdmail is for those who want:
-- Email in plain text files they control
-- Git version control for email
-- Easy scripting and automation
-- AI/LLM integration
+# Install locally
+make local-install
+```
 
-**Q: Is this secure?**
+## Future Ideas
 
-A: mdmail uses standard TLS/SSL for all server connections. Credentials are stored locally using your choice of secure method (encrypted files, system keyring, password manager).
-
-**Q: Can I use this as my main email client?**
-
-A: You could, but it's designed more as a power-user tool alongside your regular email client. Great for automation, archiving, and scripting.
-
-**Q: What about HTML emails?**
-
-A: HTML emails are converted to plain text by default when fetching. You can also write HTML emails by using a `.html` extension.
+See [docs/adr/001-design.md](docs/adr/001-design.md) for the full design document including planned features like IMAP fetch, attachments, and more.
 
 ## License
 
