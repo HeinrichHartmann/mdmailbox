@@ -535,3 +535,171 @@ Test body.
         )
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "error" in result.output.lower()
+
+
+class TestAuditTrail:
+    """Tests for send audit trail functionality."""
+
+    def test_send_result_has_log(self, smtpd):
+        """Test that SendResult includes log entries."""
+        email = Email.from_string("""---
+from: sender@example.com
+to: recipient@example.com
+subject: Audit Test
+---
+
+Test body.
+""")
+
+        credential = Credential(
+            machine=smtpd.hostname,
+            login="sender@example.com",
+            password="testpass",
+        )
+
+        result = send_email(
+            email,
+            credential=credential,
+            port=smtpd.port,
+            use_tls=False,
+        )
+
+        assert result.success
+        assert result.log  # Log should not be empty
+        assert any("Connecting to" in line for line in result.log)
+        assert any("EHLO" in line for line in result.log)
+        assert any("Message-ID" in line for line in result.log)
+
+    def test_send_result_has_metadata(self, smtpd):
+        """Test that SendResult includes SMTP metadata."""
+        email = Email.from_string("""---
+from: sender@example.com
+to: recipient@example.com
+subject: Metadata Test
+---
+
+Test body.
+""")
+
+        credential = Credential(
+            machine=smtpd.hostname,
+            login="sender@example.com",
+            password="testpass",
+        )
+
+        result = send_email(
+            email,
+            credential=credential,
+            port=smtpd.port,
+            use_tls=False,
+        )
+
+        assert result.success
+        assert result.smtp_host == smtpd.hostname
+        assert result.smtp_port == smtpd.port
+        assert result.smtp_response is not None
+        assert result.sent_at is not None
+        assert result.message_id is not None
+
+    def test_audit_trail_appended_to_file(self, smtpd, tmp_path):
+        """Test that audit trail is appended to sent email file."""
+        from mdmailbox.cli import _save_with_audit_trail
+
+        email = Email.from_string("""---
+from: sender@example.com
+to: recipient@example.com
+subject: Audit File Test
+---
+
+Test body content.
+""")
+
+        credential = Credential(
+            machine=smtpd.hostname,
+            login="sender@example.com",
+            password="testpass",
+        )
+
+        result = send_email(
+            email,
+            credential=credential,
+            port=smtpd.port,
+            use_tls=False,
+        )
+
+        assert result.success
+
+        # Save with audit trail
+        output_file = tmp_path / "sent-email.md"
+        _save_with_audit_trail(email, output_file, result)
+
+        # Read the file and verify audit trail
+        content = output_file.read_text()
+
+        # Should have the original email content
+        assert "from: sender@example.com" in content
+        assert "subject: Audit File Test" in content
+        assert "Test body content." in content
+
+        # Should have the audit trail section
+        assert "# Send Log" in content
+        assert "sent-at:" in content
+        assert "smtp-host:" in content
+        assert "smtp-port:" in content
+        assert "smtp-response:" in content
+
+        # Should have log entries
+        assert "[" in content  # Timestamps in log
+        assert "Connecting to" in content
+        assert "Message-ID:" in content
+
+    def test_failed_send_has_log(self, tmp_path):
+        """Test that failed sends include error log."""
+        email = Email.from_string("""---
+from: sender@example.com
+to: recipient@example.com
+subject: Fail Test
+---
+
+Test body.
+""")
+
+        # Use a non-existent host to force failure
+        credential = Credential(
+            machine="nonexistent.invalid",
+            login="sender@example.com",
+            password="testpass",
+        )
+
+        result = send_email(
+            email,
+            credential=credential,
+            port=587,
+            use_tls=False,
+        )
+
+        assert not result.success
+        assert result.log  # Log should not be empty even on failure
+        assert any("Connecting to" in line for line in result.log)
+        assert any("ERROR" in line for line in result.log)
+
+    def test_no_credentials_has_log(self, tmp_path):
+        """Test that missing credentials include error log."""
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text("")  # Empty authinfo
+
+        email = Email.from_string("""---
+from: unknown@example.com
+to: recipient@example.com
+subject: No Creds Test
+---
+
+Test body.
+""")
+
+        result = send_email(email, authinfo_path=authinfo)
+
+        assert not result.success
+        assert result.log
+        assert any("Looking up credentials" in line for line in result.log)
+        assert any("ERROR" in line or "No credentials" in line for line in result.log)

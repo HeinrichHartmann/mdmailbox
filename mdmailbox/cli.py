@@ -141,11 +141,11 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
         click.echo(f"Message-ID: {result.message_id}")
         click.echo(f"Moved to: {sent_path}")
     else:
-        # Show the log on failure for debugging
+        # Show the log on failure for debugging (to stderr)
         if result.log:
-            click.echo("Send log:")
+            click.echo("Send log:", err=True)
             for line in result.log:
-                click.echo(f"  {line}")
+                click.echo(f"  {line}", err=True)
         raise click.ClickException(result.message)
 
 
