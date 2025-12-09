@@ -165,7 +165,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mdmail"
+name = "mdmailbox"
 version = "0.1.4"
 source = { editable = "." }
 dependencies = [

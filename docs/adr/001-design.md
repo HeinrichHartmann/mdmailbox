@@ -1,10 +1,10 @@
-# mdmail - Design Document
+# mdmailbox - Design Document
 
 This document captures the original vision and future ideas for mdmail.
 
 ## Overview
 
-**mdmail** is a command-line tool and Python library for managing email as local files with YAML frontmatter headers. It provides bidirectional sync between IMAP servers and a local filesystem, treating emails as plain text files that can be edited, version-controlled, and processed by scripts or LLMs.
+**mdmailbox** is a command-line tool and Python library for managing email as local files with YAML frontmatter headers. It provides bidirectional sync between IMAP servers and a local filesystem, treating emails as plain text files that can be edited, version-controlled, and processed by scripts or LLMs.
 
 ## Core Concept
 
@@ -98,7 +98,7 @@ Please find the attached documents.
 ## Directory Structure
 
 ```
-~/Mdmail/
+~/Mdmailbox/
 ├── inbox/              # imported/received emails
 ├── drafts/             # work in progress
 ├── sent/               # successfully sent
@@ -109,7 +109,7 @@ Please find the attached documents.
 
 ### Credentials via .authinfo
 
-mdmail uses the standard `.authinfo` format for SMTP credentials:
+mdmailbox uses the standard `.authinfo` format for SMTP credentials:
 
 ```
 # ~/.authinfo
@@ -120,7 +120,7 @@ machine smtp.migadu.com login you@migadu.com password your-password
 machine smtp.migadu.com login *@yourdomain.com password shared-password
 ```
 
-When sending, mdmail looks up credentials by matching the `from:` address to the `login` field.
+When sending, mdmailbox looks up credentials by matching the `from:` address to the `login` field.
 
 Features:
 - Exact match lookup

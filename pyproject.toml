@@ -1,5 +1,5 @@
 [project]
-name = "mdmail"
+name = "mdmailbox"
 version = "0.1.4"
 description = "Email as plain text files with YAML frontmatter"
 readme = "README.md"
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-mdmail = "mdmail.cli:main"
+mdmailbox = "mdmail.cli:main"
 
 [build-system]
 requires = ["hatchling"]

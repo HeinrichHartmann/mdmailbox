@@ -1,4 +1,4 @@
-# mdmail
+# mdmailbox
 
 Email as plain text files with YAML headers.
 
@@ -21,7 +21,7 @@ Best,
 Me
 ```
 
-Save this as `~/Mdmail/drafts/meeting.md`, run `mdmail send ~/Mdmail/drafts/meeting.md`, and it's sent.
+Save this as `~/Mdmailbox/drafts/meeting.md`, run `mdmailbox send ~/Mdmailbox/drafts/meeting.md`, and it's sent.
 
 ## Why?
 
@@ -34,13 +34,13 @@ Save this as `~/Mdmail/drafts/meeting.md`, run `mdmail send ~/Mdmail/drafts/meet
 ## Installation
 
 ```bash
-pip install mdmail
+pip install mdmailbox
 ```
 
 Or with uv:
 
 ```bash
-uv tool install mdmail
+uv tool install mdmailbox
 ```
 
 ## Quick Start
@@ -57,42 +57,42 @@ machine smtp.migadu.com login you@migadu.com password your-password
 ### 2. Create a draft
 
 ```bash
-mdmail new --to friend@example.com --subject "Hello" --from you@gmail.com
+mdmailbox new --to friend@example.com --subject "Hello" --from you@gmail.com
 ```
 
-This creates `~/Mdmail/drafts/hello.md`.
+This creates `~/Mdmailbox/drafts/hello.md`.
 
 ### 3. Edit and send
 
 Edit the draft in your favorite editor, then:
 
 ```bash
-mdmail send ~/Mdmail/drafts/hello.md
+mdmailbox send ~/Mdmailbox/drafts/hello.md
 ```
 
-The email is sent and moved to `~/Mdmail/sent/`.
+The email is sent and moved to `~/Mdmailbox/sent/`.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `mdmail send <file>` | Send an email |
-| `mdmail send --dry-run <file>` | Validate without sending |
-| `mdmail import` | Import emails from Maildir |
-| `mdmail new` | Create a new email draft |
-| `mdmail credentials` | Show configured SMTP credentials |
+| `mdmailbox send <file>` | Send an email |
+| `mdmailbox send --dry-run <file>` | Validate without sending |
+| `mdmailbox import` | Import emails from Maildir |
+| `mdmailbox new` | Create a new email draft |
+| `mdmailbox credentials` | Show configured SMTP credentials |
 
 ### Send
 
 ```bash
 # Send an email
-mdmail send ~/Mdmail/drafts/hello.md
+mdmailbox send ~/Mdmailbox/drafts/hello.md
 
 # Dry run (validate without sending)
-mdmail send --dry-run ~/Mdmail/drafts/hello.md
+mdmailbox send --dry-run ~/Mdmailbox/drafts/hello.md
 
 # Use custom authinfo file
-mdmail send --authinfo ~/secrets/.authinfo ~/Mdmail/drafts/hello.md
+mdmailbox send --authinfo ~/secrets/.authinfo ~/Mdmailbox/drafts/hello.md
 ```
 
 ### Import from Maildir
@@ -101,39 +101,39 @@ If you use `mbsync` or similar tools to sync email locally:
 
 ```bash
 # Import all emails from ~/mail (default)
-mdmail import
+mdmailbox import
 
 # Import from custom location
-mdmail import --maildir ~/Maildir
+mdmailbox import --maildir ~/Maildir
 
 # Import to custom output directory
-mdmail import -o ~/Mdmail/inbox
+mdmailbox import -o ~/Mdmailbox/inbox
 
 # Limit number of emails
-mdmail import -n 100
+mdmailbox import -n 100
 ```
 
 ### New Draft
 
 ```bash
 # Create empty draft
-mdmail new
+mdmailbox new
 
 # Create with fields pre-filled
-mdmail new --to alice@example.com --subject "Meeting" --from me@gmail.com
+mdmailbox new --to alice@example.com --subject "Meeting" --from me@gmail.com
 
 # Specify output path
-mdmail new -o ~/Mdmail/drafts/custom-name.md
+mdmailbox new -o ~/Mdmailbox/drafts/custom-name.md
 ```
 
 ### Credentials
 
 ```bash
 # List all configured credentials
-mdmail credentials
+mdmailbox credentials
 
 # Look up credentials for specific email
-mdmail credentials --email you@gmail.com
+mdmailbox credentials --email you@gmail.com
 ```
 
 ## File Format
@@ -167,7 +167,7 @@ cc: team@example.com
 ## Directory Structure
 
 ```
-~/Mdmail/
+~/Mdmailbox/
 ├── inbox/              # imported emails
 ├── drafts/             # work in progress
 └── sent/               # successfully sent
@@ -204,8 +204,8 @@ export AUTHINFO_FILE=~/secrets/.authinfo
 ## Python API
 
 ```python
-from mdmail import Email
-from mdmail.smtp import send_email
+from mdmailbox import Email
+from mdmailbox.smtp import send_email
 from pathlib import Path
 
 # Read an email

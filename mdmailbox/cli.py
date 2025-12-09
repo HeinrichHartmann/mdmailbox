@@ -1,4 +1,4 @@
-"""Command-line interface for mdmail."""
+"""Command-line interface for mdmailbox."""
 
 from pathlib import Path
 from datetime import datetime
@@ -16,7 +16,7 @@ from .importer import import_maildir
 @click.group()
 @click.version_option()
 def main():
-    """mdmail - Email as plain text files with YAML frontmatter."""
+    """mdmailbox - Email as plain text files with YAML frontmatter."""
     pass
 
 
@@ -78,7 +78,7 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
             email.date = datetime.now().astimezone().isoformat()
 
         # Move to sent folder
-        sent_dir = Path.home() / "Mdmail" / "sent"
+        sent_dir = Path.home() / "Mdmailbox" / "sent"
         sent_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate sent filename with timestamp
@@ -118,7 +118,7 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
     "-o",
     type=click.Path(path_type=Path),
     default=None,
-    help="Output directory (default: ~/Mdmail/inbox)",
+    help="Output directory (default: ~/Mdmailbox/inbox)",
 )
 @click.option(
     "--limit",
@@ -132,9 +132,9 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
     help="Account name (auto-detected from path if not specified)",
 )
 def import_cmd(maildir: Path, output: Path | None, limit: int | None, account: str | None):
-    """Import emails from Maildir to mdmail format."""
+    """Import emails from Maildir to mdmailbox format."""
     if output is None:
-        output = Path.home() / "Mdmail" / "inbox"
+        output = Path.home() / "Mdmailbox" / "inbox"
 
     click.echo(f"Importing from: {maildir}")
     click.echo(f"Output to: {output}")
@@ -176,11 +176,11 @@ def import_cmd(maildir: Path, output: Path | None, limit: int | None, account: s
     "--output", "-o",
     type=click.Path(path_type=Path),
     default=None,
-    help="Output file path (default: ~/Mdmail/drafts/<subject>.md)",
+    help="Output file path (default: ~/Mdmailbox/drafts/<subject>.md)",
 )
 def new(to: str | None, from_addr: str | None, subject: str | None, cc: str | None, output: Path | None):
     """Create a new email draft."""
-    drafts_dir = Path.home() / "Mdmail" / "drafts"
+    drafts_dir = Path.home() / "Mdmailbox" / "drafts"
     drafts_dir.mkdir(parents=True, exist_ok=True)
 
     # Build email

@@ -6,10 +6,10 @@ from datetime import datetime
 
 import pytest
 
-from mdmail.authinfo import parse_authinfo, find_credential_by_email, Credential, normalize_gmail
-from mdmail.email import Email
-from mdmail.smtp import send_email
-from mdmail.importer import sanitize_filename, generate_filename, parse_rfc822, import_maildir
+from mdmailbox.authinfo import parse_authinfo, find_credential_by_email, Credential, normalize_gmail
+from mdmailbox.email import Email
+from mdmailbox.smtp import send_email
+from mdmailbox.importer import sanitize_filename, generate_filename, parse_rfc822, import_maildir
 
 
 class TestAuthinfo:
