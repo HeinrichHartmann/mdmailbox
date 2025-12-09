@@ -7,9 +7,48 @@ import click
 
 from .email import Email
 from .importer import sanitize_filename
-from .smtp import send_email
+from .smtp import send_email, SendResult
 from .authinfo import parse_authinfo, find_credential_by_email
 from .importer import import_maildir
+
+
+def _save_with_audit_trail(email: Email, path: Path, result: SendResult) -> None:
+    """Save email to file with audit trail appended.
+
+    The audit trail is a second YAML section at the end of the file
+    containing send metadata and a verbose log.
+    """
+    # First save the email normally
+    email.save(path)
+
+    # Now append the audit trail
+    audit_lines = [
+        "",
+        "---",
+        "# Send Log",
+    ]
+
+    if result.sent_at:
+        audit_lines.append(f"sent-at: {result.sent_at.isoformat()}")
+    if result.smtp_host:
+        audit_lines.append(f"smtp-host: {result.smtp_host}")
+    if result.smtp_port:
+        audit_lines.append(f"smtp-port: {result.smtp_port}")
+    if result.smtp_response:
+        # Quote the response in case it has special chars
+        audit_lines.append(f'smtp-response: "{result.smtp_response}"')
+
+    audit_lines.append("---")
+    audit_lines.append("")
+
+    # Add the log entries
+    for log_line in result.log:
+        audit_lines.append(log_line)
+
+    # Append to file
+    with open(path, "a") as f:
+        f.write("\n".join(audit_lines))
+        f.write("\n")
 
 
 @click.group()
@@ -94,14 +133,19 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
                 sent_path = sent_dir / f"{stem}-{i}.md"
                 i += 1
 
-        # Save updated email to sent folder and remove original
-        email.save(sent_path)
+        # Save email with audit trail appended
+        _save_with_audit_trail(email, sent_path, result)
         file.unlink()
 
         click.echo(f"Sent: {email.subject}")
         click.echo(f"Message-ID: {result.message_id}")
         click.echo(f"Moved to: {sent_path}")
     else:
+        # Show the log on failure for debugging
+        if result.log:
+            click.echo("Send log:")
+            for line in result.log:
+                click.echo(f"  {line}")
         raise click.ClickException(result.message)
 
 
