@@ -6,7 +6,10 @@ from datetime import datetime
 
 import pytest
 
+from click.testing import CliRunner
+
 from mdmailbox.authinfo import parse_authinfo, find_credential_by_email, Credential, normalize_gmail
+from mdmailbox.cli import main
 from mdmailbox.email import Email
 from mdmailbox.smtp import send_email
 from mdmailbox.importer import sanitize_filename, generate_filename, parse_rfc822, import_maildir
@@ -461,3 +464,64 @@ Hi Bob, how are you?
         assert email.subject == "Hello Bob"
         assert email.account == "test-account"
         assert email.original_hash is not None
+
+
+class TestCLI:
+    """Tests for CLI entry points."""
+
+    def test_cli_entry_point_loads(self):
+        """Test that the CLI entry point can be invoked."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        assert "mdmailbox" in result.output
+
+    def test_cli_version(self):
+        """Test that --version works."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--version"])
+        assert result.exit_code == 0
+
+    def test_cli_send_dry_run(self, tmp_path):
+        """Test send --dry-run command."""
+        # Create a test email file
+        email_file = tmp_path / "test.md"
+        email_file.write_text("""---
+from: sender@example.com
+to: recipient@example.com
+subject: Test Subject
+---
+
+Test body.
+""")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["send", "--dry-run", str(email_file)])
+        assert result.exit_code == 0
+        assert "Dry run" in result.output
+        assert "sender@example.com" in result.output
+
+    def test_cli_new_command(self, tmp_path):
+        """Test new command creates draft."""
+        runner = CliRunner()
+        output_file = tmp_path / "draft.md"
+        result = runner.invoke(main, [
+            "new",
+            "--to", "test@example.com",
+            "--subject", "Test Draft",
+            "-o", str(output_file)
+        ])
+        assert result.exit_code == 0
+        assert output_file.exists()
+
+        # Verify content
+        email = Email.from_file(output_file)
+        assert email.to == ["test@example.com"]
+        assert email.subject == "Test Draft"
+
+    def test_cli_credentials_no_file(self, tmp_path):
+        """Test credentials command with missing file."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["credentials", "--authinfo", str(tmp_path / "nonexistent")])
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower() or "error" in result.output.lower()
