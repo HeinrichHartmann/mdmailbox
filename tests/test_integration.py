@@ -1,18 +1,20 @@
 """Integration tests for mdmail using smtpdfix."""
 
-import tempfile
-from pathlib import Path
 from datetime import datetime
 
-import pytest
 
 from click.testing import CliRunner
 
-from mdmailbox.authinfo import parse_authinfo, find_credential_by_email, Credential, normalize_gmail
+from mdmailbox.authinfo import parse_authinfo, find_credential_by_email, Credential
 from mdmailbox.cli import main
 from mdmailbox.email import Email
 from mdmailbox.smtp import send_email
-from mdmailbox.importer import sanitize_filename, generate_filename, parse_rfc822, import_maildir
+from mdmailbox.importer import (
+    sanitize_filename,
+    generate_filename,
+    parse_rfc822,
+    import_maildir,
+)
 
 
 class TestAuthinfo:
@@ -505,12 +507,18 @@ Test body.
         """Test new command creates draft."""
         runner = CliRunner()
         output_file = tmp_path / "draft.md"
-        result = runner.invoke(main, [
-            "new",
-            "--to", "test@example.com",
-            "--subject", "Test Draft",
-            "-o", str(output_file)
-        ])
+        result = runner.invoke(
+            main,
+            [
+                "new",
+                "--to",
+                "test@example.com",
+                "--subject",
+                "Test Draft",
+                "-o",
+                str(output_file),
+            ],
+        )
         assert result.exit_code == 0
         assert output_file.exists()
 
@@ -522,6 +530,8 @@ Test body.
     def test_cli_credentials_no_file(self, tmp_path):
         """Test credentials command with missing file."""
         runner = CliRunner()
-        result = runner.invoke(main, ["credentials", "--authinfo", str(tmp_path / "nonexistent")])
+        result = runner.invoke(
+            main, ["credentials", "--authinfo", str(tmp_path / "nonexistent")]
+        )
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "error" in result.output.lower()

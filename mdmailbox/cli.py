@@ -3,7 +3,6 @@
 from pathlib import Path
 from datetime import datetime
 import os
-import shutil
 import click
 
 from .email import Email
@@ -64,7 +63,7 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
         if email.cc:
             click.echo(f"Cc: {', '.join(email.cc)}")
         click.echo(f"Subject: {email.subject}")
-        click.echo(f"---")
+        click.echo("---")
         click.echo(email.body[:500] + ("..." if len(email.body) > 500 else ""))
         return
 
@@ -131,7 +130,9 @@ def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
     "--account",
     help="Account name (auto-detected from path if not specified)",
 )
-def import_cmd(maildir: Path, output: Path | None, limit: int | None, account: str | None):
+def import_cmd(
+    maildir: Path, output: Path | None, limit: int | None, account: str | None
+):
     """Import emails from Maildir to mdmailbox format."""
     if output is None:
         output = Path.home() / "Mdmailbox" / "inbox"
@@ -157,15 +158,19 @@ def import_cmd(maildir: Path, output: Path | None, limit: int | None, account: s
 
 @main.command()
 @click.option(
-    "--to", "-t",
+    "--to",
+    "-t",
     help="Recipient email address",
 )
 @click.option(
-    "--from", "-f", "from_addr",
+    "--from",
+    "-f",
+    "from_addr",
     help="Sender email address",
 )
 @click.option(
-    "--subject", "-s",
+    "--subject",
+    "-s",
     help="Email subject",
 )
 @click.option(
@@ -173,12 +178,19 @@ def import_cmd(maildir: Path, output: Path | None, limit: int | None, account: s
     help="CC recipient(s), comma-separated",
 )
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     type=click.Path(path_type=Path),
     default=None,
     help="Output file path (default: ~/Mdmailbox/drafts/<subject>.md)",
 )
-def new(to: str | None, from_addr: str | None, subject: str | None, cc: str | None, output: Path | None):
+def new(
+    to: str | None,
+    from_addr: str | None,
+    subject: str | None,
+    cc: str | None,
+    output: Path | None,
+):
     """Create a new email draft."""
     drafts_dir = Path.home() / "Mdmailbox" / "drafts"
     drafts_dir.mkdir(parents=True, exist_ok=True)
@@ -200,6 +212,7 @@ def new(to: str | None, from_addr: str | None, subject: str | None, cc: str | No
         if subject:
             # Sanitize subject for filename
             from .importer import sanitize_filename
+
             filename = sanitize_filename(subject, max_len=50) + ".md"
         else:
             filename = "new-draft.md"

@@ -16,6 +16,8 @@
           buildInputs = with pkgs; [
             uv
             python313
+            ruff
+            pre-commit
           ];
 
           shellHook = ''
