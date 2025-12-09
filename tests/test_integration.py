@@ -1,7 +1,7 @@
 """Integration tests for mdmail using smtpdfix."""
 
 from datetime import datetime
-
+from pathlib import Path
 
 from click.testing import CliRunner
 
@@ -527,6 +527,39 @@ Test body.
         assert email.to == ["test@example.com"]
         assert email.subject == "Test Draft"
 
+    def test_cli_new_with_signature(self, tmp_path, monkeypatch):
+        """Test new command includes signature from ~/.signature.md."""
+        # Create a fake home directory with signature
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        signature_file = fake_home / ".signature.md"
+        signature_file.write_text("--\nBest regards,\nTest User")
+
+        # Patch Path.home() to return our fake home
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        runner = CliRunner()
+        output_file = tmp_path / "draft.md"
+        result = runner.invoke(
+            main,
+            [
+                "new",
+                "--to",
+                "test@example.com",
+                "--subject",
+                "Signature Test",
+                "-o",
+                str(output_file),
+            ],
+        )
+        assert result.exit_code == 0
+
+        # Verify signature is in body
+        content = output_file.read_text()
+        assert "--" in content
+        assert "Best regards," in content
+        assert "Test User" in content
+
     def test_cli_credentials_no_file(self, tmp_path):
         """Test credentials command with missing file."""
         runner = CliRunner()
@@ -535,6 +568,47 @@ Test body.
         )
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "error" in result.output.lower()
+
+    def test_cli_reply_command(self, tmp_path, monkeypatch):
+        """Test reply command creates draft with quoted original."""
+        # Create fake home for drafts
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        # Create original email
+        original_file = tmp_path / "original.md"
+        original_file.write_text("""---
+from: alice@example.com
+to: me@example.com
+subject: Hello there
+message-id: <abc123@example.com>
+date: '2025-01-23T10:30:00+00:00'
+---
+
+How are you doing?
+
+Best,
+Alice
+""")
+
+        runner = CliRunner()
+        output_file = tmp_path / "reply.md"
+        result = runner.invoke(
+            main,
+            ["reply", str(original_file), "-o", str(output_file)],
+        )
+        assert result.exit_code == 0
+        assert output_file.exists()
+
+        # Verify reply content
+        content = output_file.read_text()
+        assert "Re: Hello there" in content
+        assert "alice@example.com" in content  # to field
+        assert "in-reply-to: <abc123@example.com>" in content
+        assert "> How are you doing?" in content  # quoted
+        assert "> Best," in content
+        assert "> Alice" in content
 
 
 class TestAuditTrail:

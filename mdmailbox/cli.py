@@ -239,6 +239,13 @@ def new(
     drafts_dir = Path.home() / "Mdmailbox" / "drafts"
     drafts_dir.mkdir(parents=True, exist_ok=True)
 
+    # Build email body with signature if available
+    body = "\n"
+    signature_path = Path.home() / ".signature.md"
+    if signature_path.exists():
+        signature = signature_path.read_text()
+        body = f"\n\n{signature}"
+
     # Build email
     to_list = [to] if to else []
     cc_list = [c.strip() for c in cc.split(",")] if cc else []
@@ -247,7 +254,7 @@ def new(
         from_addr=from_addr or "",
         to=to_list,
         subject=subject or "",
-        body="\n",
+        body=body,
         cc=cc_list,
     )
 
@@ -322,6 +329,91 @@ def credentials(authinfo: Path | None, email: str | None):
             click.echo(f"    Host: {cred.machine}")
             click.echo(f"    Pass: {'*' * len(cred.password)}")
             click.echo()
+
+
+@main.command()
+@click.argument("file", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output file path (default: ~/Mdmailbox/drafts/re-<subject>.md)",
+)
+def reply(file: Path, output: Path | None):
+    """Create a reply draft to an email.
+
+    FILE is a path to an email file to reply to.
+    """
+    # Load original email
+    try:
+        original = Email.from_file(file)
+    except Exception as e:
+        raise click.ClickException(f"Failed to parse email: {e}")
+
+    drafts_dir = Path.home() / "Mdmailbox" / "drafts"
+    drafts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build reply subject
+    subject = original.subject or ""
+    if not subject.lower().startswith("re:"):
+        subject = f"Re: {subject}"
+
+    # Reply to sender
+    reply_to = original.from_addr
+
+    # Build reply body with quoted original
+    body_lines = ["\n\n"]
+
+    # Add signature if available
+    signature_path = Path.home() / ".signature.md"
+    if signature_path.exists():
+        body_lines.append(signature_path.read_text())
+        body_lines.append("\n\n")
+
+    # Quote original message
+    if original.date:
+        body_lines.append(f"On {original.date}, {original.from_addr} wrote:\n")
+    else:
+        body_lines.append(f"{original.from_addr} wrote:\n")
+
+    # Quote each line of original body
+    for line in original.body.splitlines():
+        body_lines.append(f"> {line}")
+
+    body = "\n".join(body_lines)
+
+    # Build references for threading
+    references = []
+    if original.message_id:
+        references.append(original.message_id)
+
+    email = Email(
+        from_addr="",  # User fills in
+        to=[reply_to] if reply_to else [],
+        subject=subject,
+        body=body,
+        in_reply_to=original.message_id,
+    )
+
+    # Determine output path
+    if output is None:
+        subject_slug = sanitize_filename(subject, max_len=50)
+        filename = f"{subject_slug}.md"
+        output = drafts_dir / filename
+
+        # Avoid overwriting
+        if output.exists():
+            i = 1
+            stem = output.stem
+            while output.exists():
+                output = drafts_dir / f"{stem}-{i}.md"
+                i += 1
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    email.save(output)
+
+    click.echo(f"Created reply: {output}")
 
 
 if __name__ == "__main__":
