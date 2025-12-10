@@ -1,7 +1,7 @@
 .PHONY: test lint format check local-install release setup
 
 test:
-	uv run pytest tests/ -v
+	uv run python -m pytest tests/ -v
 
 lint:
 	ruff check .

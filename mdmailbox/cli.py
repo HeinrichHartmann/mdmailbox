@@ -58,6 +58,121 @@ def main():
     pass
 
 
+def _format_validation_preview(email: Email, validation_result) -> str:
+    """Format the email preview with inline validation feedback."""
+    lines = ["═" * 66]
+
+    # Group validation items by field for inline display
+    items_by_field: dict[str, list] = {}
+    for item in validation_result.items:
+        items_by_field.setdefault(item.field, []).append(item)
+
+    def format_field(
+        name: str, value: str | None, items: list | None = None
+    ) -> list[str]:
+        """Format a single field with its validation status."""
+        result_lines = []
+        display_name = f" {name.capitalize()}:"
+        padding = " " * (12 - len(display_name))
+
+        if items:
+            # First item on same line as field
+            first = items[0]
+            val_display = value if value else ""
+            result_lines.append(
+                f"{display_name}{padding}{val_display} {first.symbol} {first.message}"
+            )
+            # Additional items on separate lines
+            for item in items[1:]:
+                result_lines.append(
+                    f"             {item.value or ''} {item.symbol} {item.message}"
+                )
+        elif value:
+            result_lines.append(f"{display_name}{padding}{value}")
+
+        return result_lines
+
+    # Format header fields with inline validation
+    if email.from_addr:
+        lines.extend(format_field("from", email.from_addr, items_by_field.get("from")))
+
+    if email.to:
+        to_items = items_by_field.get("to", [])
+        lines.append(
+            f" To:         {email.to[0]} {to_items[0].symbol if to_items else ''} {to_items[0].message if to_items else ''}"
+        )
+        for i, addr in enumerate(email.to[1:], 1):
+            item = to_items[i] if i < len(to_items) else None
+            if item:
+                lines.append(f"             {addr} {item.symbol} {item.message}")
+            else:
+                lines.append(f"             {addr}")
+
+    if email.cc:
+        cc_items = items_by_field.get("cc", [])
+        lines.append(
+            f" Cc:         {email.cc[0]} {cc_items[0].symbol if cc_items else ''} {cc_items[0].message if cc_items else ''}"
+        )
+        for i, addr in enumerate(email.cc[1:], 1):
+            item = cc_items[i] if i < len(cc_items) else None
+            if item:
+                lines.append(f"             {addr} {item.symbol} {item.message}")
+            else:
+                lines.append(f"             {addr}")
+
+    if email.subject is not None:
+        subj_items = items_by_field.get("subject", [])
+        if subj_items:
+            lines.append(
+                f" Subject:    {email.subject} {subj_items[0].symbol} {subj_items[0].message}"
+            )
+        else:
+            lines.append(f" Subject:    {email.subject}")
+
+    if email.in_reply_to:
+        reply_items = items_by_field.get("in-reply-to", [])
+        if reply_items:
+            lines.append(
+                f" In-Reply-To: {email.in_reply_to} {reply_items[0].symbol} {reply_items[0].message}"
+            )
+        else:
+            lines.append(f" In-Reply-To: {email.in_reply_to}")
+
+    lines.append("─" * 66)
+    lines.append("")
+
+    # Body preview
+    body_preview = email.body[:500] if email.body else ""
+    if len(email.body or "") > 500:
+        body_preview += "..."
+    lines.append(body_preview)
+
+    lines.append("")
+    lines.append("═" * 66)
+
+    # Summary at bottom
+    body_items = items_by_field.get("body", [])
+    if body_items:
+        lines.append(f"{body_items[0].symbol} Body: {body_items[0].message}")
+
+    # Count errors and warnings
+    error_count = len(validation_result.errors)
+    warning_count = len(validation_result.warnings)
+
+    if error_count > 0:
+        lines.append(
+            f"✗ {error_count} error{'s' if error_count > 1 else ''} - cannot send"
+        )
+    elif warning_count > 0:
+        lines.append(
+            f"✓ Valid with {warning_count} warning{'s' if warning_count > 1 else ''}"
+        )
+    else:
+        lines.append("✓ All headers valid")
+
+    return "\n".join(lines)
+
+
 @main.command()
 @click.argument("file", type=click.Path(exists=True, path_type=Path))
 @click.option(
@@ -68,7 +183,19 @@ def main():
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Validate and show what would be sent without actually sending",
+    help="Validate and show preview only, don't send",
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Auto-confirm, but still validate. Fails on errors.",
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Skip all validation, send as-is. For emergency use.",
 )
 @click.option(
     "--port",
@@ -76,38 +203,68 @@ def main():
     default=587,
     help="SMTP port (default: 587)",
 )
-def send(file: Path, authinfo: Path | None, dry_run: bool, port: int):
+@click.option(
+    "--no-tls",
+    is_flag=True,
+    help="Disable STARTTLS (for testing only)",
+)
+def send(
+    file: Path,
+    authinfo: Path | None,
+    dry_run: bool,
+    yes: bool,
+    force: bool,
+    port: int,
+    no_tls: bool,
+):
     """Send an email file.
 
     FILE is a path to an email file with YAML frontmatter.
+
+    By default, validates and shows a preview before prompting for confirmation.
+    Use --yes to auto-confirm (still validates), or --force to skip validation.
     """
+    from .validate import validate_email_string, ValidationContext
+
+    # Load file content
+    content = file.read_text()
+
     # Load and parse email
     try:
         email = Email.from_file(file)
     except Exception as e:
         raise click.ClickException(f"Failed to parse email: {e}")
 
-    # Validate required fields
-    if not email.from_addr:
-        raise click.ClickException("Missing required header: from")
-    if not email.to:
-        raise click.ClickException("Missing required header: to")
-    if not email.subject:
-        raise click.ClickException("Missing required header: subject")
+    # Skip validation if --force
+    if force:
+        click.echo("⚠ Skipping validation (--force)", err=True)
+    else:
+        # Run validation
+        ctx = ValidationContext(authinfo_path=authinfo)
+        validation_result = validate_email_string(content, ctx)
 
-    if dry_run:
-        click.echo("=== Dry run - would send: ===")
-        click.echo(f"From: {email.from_addr}")
-        click.echo(f"To: {', '.join(email.to)}")
-        if email.cc:
-            click.echo(f"Cc: {', '.join(email.cc)}")
-        click.echo(f"Subject: {email.subject}")
-        click.echo("---")
-        click.echo(email.body[:500] + ("..." if len(email.body) > 500 else ""))
-        return
+        # Show preview with validation
+        preview = _format_validation_preview(email, validation_result)
+        click.echo(preview)
+
+        # Check for errors
+        if validation_result.has_errors:
+            click.echo("", err=True)
+            for item in validation_result.errors:
+                click.echo(f"✗ {item.field}: {item.message}", err=True)
+            raise click.ClickException("Cannot send - fix errors above")
+
+        if dry_run:
+            return
+
+        # Prompt for confirmation unless --yes
+        if not yes:
+            if not click.confirm("Send this email?", default=False):
+                click.echo("Cancelled.")
+                return
 
     # Send
-    result = send_email(email, authinfo_path=authinfo, port=port)
+    result = send_email(email, authinfo_path=authinfo, port=port, use_tls=not no_tls)
 
     if result.success:
         # Update email with message-id and date from send

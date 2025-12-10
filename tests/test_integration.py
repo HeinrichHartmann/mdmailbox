@@ -485,7 +485,13 @@ class TestCLI:
         assert result.exit_code == 0
 
     def test_cli_send_dry_run(self, tmp_path):
-        """Test send --dry-run command."""
+        """Test send --dry-run command with validation preview."""
+        # Create authinfo for credential validation
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine smtp.example.com login sender@example.com password secret\n"
+        )
+
         # Create a test email file
         email_file = tmp_path / "test.md"
         email_file.write_text("""---
@@ -498,10 +504,194 @@ Test body.
 """)
 
         runner = CliRunner()
-        result = runner.invoke(main, ["send", "--dry-run", str(email_file)])
+        result = runner.invoke(
+            main, ["send", "--dry-run", "--authinfo", str(authinfo), str(email_file)]
+        )
         assert result.exit_code == 0
-        assert "Dry run" in result.output
+        # Should show validation preview with field status
         assert "sender@example.com" in result.output
+        assert "recipient@example.com" in result.output
+        assert "Test Subject" in result.output
+        assert "✓" in result.output  # Should have success markers
+
+    def test_cli_send_dry_run_with_errors(self, tmp_path):
+        """Test send --dry-run shows validation errors."""
+        # Create email with invalid sender (no credentials)
+        email_file = tmp_path / "test.md"
+        email_file.write_text("""---
+from: unknown@example.com
+to: recipient@example.com
+subject: Test Subject
+---
+
+Test body.
+""")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["send", "--dry-run", str(email_file)])
+        assert result.exit_code == 1
+        assert "✗" in result.output  # Should have error marker
+        assert "no credentials found" in result.output
+
+    def test_cli_send_force_skips_validation(self, smtpd, tmp_path, monkeypatch):
+        """Test --force flag skips validation and sends directly."""
+        # Create fake home for sent folder
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        # Create authinfo pointing to test server
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            f"machine {smtpd.hostname} login sender@example.com password testpass\n"
+        )
+
+        email_file = tmp_path / "test.md"
+        email_file.write_text("""---
+from: sender@example.com
+to: recipient@example.com
+subject: Force Send Test
+---
+
+Sent with --force.
+""")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "send",
+                "--force",
+                "--authinfo",
+                str(authinfo),
+                "--port",
+                str(smtpd.port),
+                "--no-tls",
+                str(email_file),
+            ],
+        )
+
+        # Should skip validation warning to stderr
+        assert "Skipping validation" in result.output or result.exit_code == 0, (
+            f"output: {result.output}"
+        )
+        # Should have sent
+        assert len(smtpd.messages) == 1
+
+    def test_cli_send_yes_autoconfirms(self, smtpd, tmp_path, monkeypatch):
+        """Test --yes flag auto-confirms after validation."""
+        # Create fake home for sent folder
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        # Create authinfo pointing to test server
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            f"machine {smtpd.hostname} login sender@example.com password testpass\n"
+        )
+
+        email_file = tmp_path / "test.md"
+        email_file.write_text("""---
+from: sender@example.com
+to: recipient@example.com
+subject: Yes Flag Test
+---
+
+Sent with --yes.
+""")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "send",
+                "--yes",
+                "--authinfo",
+                str(authinfo),
+                "--port",
+                str(smtpd.port),
+                "--no-tls",
+                str(email_file),
+            ],
+        )
+
+        assert result.exit_code == 0, f"output: {result.output}"
+        # Should show validation preview
+        assert "sender@example.com" in result.output
+        assert "✓" in result.output
+        # Should have sent without prompting
+        assert len(smtpd.messages) == 1
+
+    def test_cli_send_yes_fails_on_errors(self, tmp_path):
+        """Test --yes flag still fails on validation errors."""
+        email_file = tmp_path / "test.md"
+        email_file.write_text("""---
+from: unknown@example.com
+to: recipient@example.com
+subject: Should Fail
+---
+
+Should not be sent.
+""")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["send", "--yes", str(email_file)])
+
+        assert result.exit_code == 1
+        assert "✗" in result.output
+        assert "Cannot send" in result.output
+
+    def test_cli_send_unknown_header_error(self, tmp_path):
+        """Test that unknown headers are flagged as errors."""
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine smtp.example.com login sender@example.com password secret\n"
+        )
+
+        email_file = tmp_path / "test.md"
+        email_file.write_text("""---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+x-custom-header: should error
+---
+
+Body.
+""")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["send", "--dry-run", "--authinfo", str(authinfo), str(email_file)]
+        )
+        assert result.exit_code == 1
+        assert "unknown header" in result.output.lower()
+
+    def test_cli_send_prompt_cancelled(self, tmp_path):
+        """Test that answering 'n' to confirmation cancels send."""
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine smtp.example.com login sender@example.com password secret\n"
+        )
+
+        email_file = tmp_path / "test.md"
+        email_file.write_text("""---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+---
+
+Body.
+""")
+
+        runner = CliRunner()
+        # Simulate user typing 'n' to cancel
+        result = runner.invoke(
+            main, ["send", "--authinfo", str(authinfo), str(email_file)], input="n\n"
+        )
+
+        assert result.exit_code == 0
+        assert "Cancelled" in result.output
 
     def test_cli_new_command(self, tmp_path):
         """Test new command creates draft."""
@@ -609,6 +799,257 @@ Alice
         assert "> How are you doing?" in content  # quoted
         assert "> Best," in content
         assert "> Alice" in content
+
+
+class TestValidation:
+    """Tests for email validation logic."""
+
+    def test_validate_valid_email(self, tmp_path):
+        """Test validation of a valid email with credentials."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine smtp.example.com login sender@example.com password secret\n"
+        )
+
+        content = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Test Subject
+---
+
+This is the body.
+"""
+        ctx = ValidationContext(authinfo_path=authinfo)
+        result = validate_email_string(content, ctx)
+
+        assert not result.has_errors
+        assert "from" in [i.field for i in result.items]
+        assert "to" in [i.field for i in result.items]
+        assert "subject" in [i.field for i in result.items]
+        assert "body" in [i.field for i in result.items]
+
+    def test_validate_missing_from(self):
+        """Test validation catches missing from address."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        content = """---
+to: recipient@example.com
+subject: Test Subject
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [
+            i for i in result.items if i.field == "from" and i.level.value == "error"
+        ]
+        assert len(errors) == 1
+        assert "required" in errors[0].message
+
+    def test_validate_missing_to(self):
+        """Test validation catches missing to address."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        content = """---
+from: sender@example.com
+subject: Test Subject
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [
+            i for i in result.items if i.field == "to" and i.level.value == "error"
+        ]
+        assert len(errors) == 1
+        assert "required" in errors[0].message
+
+    def test_validate_missing_subject(self):
+        """Test validation catches missing subject."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        content = """---
+from: sender@example.com
+to: recipient@example.com
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [
+            i for i in result.items if i.field == "subject" and i.level.value == "error"
+        ]
+        assert len(errors) == 1
+        assert "empty" in errors[0].message
+
+    def test_validate_empty_body(self):
+        """Test validation catches empty body."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        content = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+---
+
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [
+            i for i in result.items if i.field == "body" and i.level.value == "error"
+        ]
+        assert len(errors) == 1
+        assert "empty" in errors[0].message
+
+    def test_validate_invalid_email_format(self):
+        """Test validation catches invalid email format."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        content = """---
+from: not-an-email
+to: also-not-an-email
+subject: Test
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [i for i in result.items if "invalid email format" in i.message]
+        assert len(errors) >= 2  # Both from and to should fail
+
+    def test_validate_unknown_header(self):
+        """Test validation catches unknown headers."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        content = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+x-custom-header: should be flagged
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [i for i in result.items if i.field == "x-custom-header"]
+        assert len(errors) == 1
+        assert "unknown header" in errors[0].message
+
+    def test_validate_no_credentials(self):
+        """Test validation catches missing credentials."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        content = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+---
+
+Body.
+"""
+        # No authinfo provided
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [
+            i for i in result.items if i.field == "from" and "credentials" in i.message
+        ]
+        assert len(errors) == 1
+
+    def test_validate_multiple_recipients(self, tmp_path):
+        """Test validation of multiple recipients."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine smtp.example.com login sender@example.com password secret\n"
+        )
+
+        content = """---
+from: sender@example.com
+to:
+  - alice@example.com
+  - bob@example.com
+cc: charlie@example.com
+subject: Test
+---
+
+Body.
+"""
+        ctx = ValidationContext(authinfo_path=authinfo)
+        result = validate_email_string(content, ctx)
+
+        assert not result.has_errors
+        # Should have validation items for each recipient
+        to_items = [i for i in result.items if i.field == "to"]
+        cc_items = [i for i in result.items if i.field == "cc"]
+        assert len(to_items) == 2  # alice and bob
+        assert len(cc_items) == 1  # charlie
+
+    def test_validate_message_id_format(self):
+        """Test validation of message-id format."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        content = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+in-reply-to: not-in-angle-brackets
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        # Should have a warning for message-id format
+        warnings = [
+            i
+            for i in result.items
+            if i.field == "in-reply-to" and i.level.value == "warning"
+        ]
+        assert len(warnings) == 1
+        assert "angle brackets" in warnings[0].message
+
+    def test_validate_result_to_dict(self, tmp_path):
+        """Test ValidationResult.to_dict() serialization."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine smtp.example.com login sender@example.com password secret\n"
+        )
+
+        content = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+---
+
+Body.
+"""
+        ctx = ValidationContext(authinfo_path=authinfo)
+        result = validate_email_string(content, ctx)
+
+        d = result.to_dict()
+
+        assert "has_errors" in d
+        assert "has_warnings" in d
+        assert "items" in d
+        assert isinstance(d["items"], list)
+        assert all("level" in item and "field" in item for item in d["items"])
 
 
 class TestAuditTrail:
