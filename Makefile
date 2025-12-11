@@ -1,6 +1,9 @@
-.PHONY: test lint format check install local-install release setup
+.PHONY: test lint format check install local-install release setup build-docs
 
-test:
+build-docs:
+	uv run python build_docs.py
+
+test: build-docs
 	uv run python -m pytest tests/ -v
 
 lint:
@@ -12,7 +15,7 @@ format:
 check: lint test
 	@echo "All checks passed!"
 
-install:
+install: build-docs
 	uv tool install --force --reinstall .
 
 local-install: install
@@ -21,7 +24,7 @@ setup:
 	pre-commit install
 	@echo "Pre-commit hooks installed!"
 
-release: check
+release: build-docs check
 	@# Check working directory is clean
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "Error: Working directory is not clean"; \

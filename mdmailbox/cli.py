@@ -53,9 +53,13 @@ def _save_with_audit_trail(email: Email, path: Path, result: SendResult) -> None
 
 def _get_readme_content() -> str:
     """Load README content from package."""
-    readme_path = Path(__file__).parent.parent / "README.md"
-    if readme_path.exists():
-        return readme_path.read_text()
+    try:
+        from ._docs import README_CONTENT
+        if README_CONTENT:
+            return README_CONTENT
+    except ImportError:
+        pass
+
     return "README not found"
 
 
