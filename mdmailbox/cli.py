@@ -51,11 +51,115 @@ def _save_with_audit_trail(email: Email, path: Path, result: SendResult) -> None
         f.write("\n")
 
 
+def _get_readme_content() -> str:
+    """Load README content from package."""
+    readme_path = Path(__file__).parent.parent / "README.md"
+    if readme_path.exists():
+        return readme_path.read_text()
+    return "README not found"
+
+
+def _get_format_guide() -> str:
+    """Return the email format documentation."""
+    return """## Email Format Guide
+
+Every mdmailbox email is a plain text file with YAML frontmatter:
+
+```yaml
+---
+from: sender@example.com
+to: recipient@example.com
+subject: Subject line
+cc: optional@example.com
+date: 2025-12-08T15:30:00+01:00
+message-id: <abc123@mail.example.com>
+attachments:
+  - ./report.pdf
+  - ~/documents/data.xlsx
+---
+
+Body content goes here.
+```
+
+### Fields
+
+**Required:**
+- `from` - Sender email address (can include display name: "John Doe <john@example.com>")
+- `to` - Recipient(s), can be string or list
+- `subject` - Email subject
+
+**Optional:**
+- `cc` - Carbon copy recipient(s)
+- `bcc` - Blind carbon copy recipient(s)
+- `date` - ISO 8601 or RFC 2822 format
+- `message-id` - Unique message identifier
+- `in-reply-to` - Message-ID being replied to
+- `references` - List of message-IDs for threading
+- `reply-to` - Reply-to address
+- `attachments` - File paths (see below)
+
+### Multiple Recipients
+
+```yaml
+---
+to:
+  - alice@example.com
+  - bob@example.com
+cc: team@example.com
+---
+```
+
+### Attachments
+
+Files to attach to the email. Paths support:
+- Relative paths: `./report.pdf`
+- Home directory: `~/documents/data.xlsx`
+- Absolute paths: `/abs/path/file.pdf`
+
+Single attachment (scalar):
+```yaml
+attachments: ./report.pdf
+```
+
+Multiple attachments (list):
+```yaml
+attachments:
+  - ./report.pdf
+  - ~/documents/data.xlsx
+  - /tmp/image.png
+```
+
+**Validation:**
+- Files must exist (error if not found)
+- Cannot attach directories (error if path is directory)
+- Empty files are rejected (0 bytes = error)
+- Large files (>10MB) trigger warnings
+- MIME type is auto-detected
+
+### Display Names
+
+The `from` field supports RFC 5322 display names:
+
+```yaml
+from: John Doe <john@example.com>
+```
+
+Display names are preserved through save/load cycles.
+"""
+
+
 @click.group()
 @click.version_option()
 def main():
     """mdmailbox - Email as plain text files with YAML frontmatter."""
     pass
+
+
+@main.command()
+def help():
+    """Show README documentation."""
+    content = _get_readme_content()
+    click.echo(content)
 
 
 def _format_validation_preview(email: Email, validation_result) -> str:
