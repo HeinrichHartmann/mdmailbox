@@ -1,4 +1,4 @@
-.PHONY: test lint format check local-install release setup
+.PHONY: test lint format check install local-install release setup
 
 test:
 	uv run python -m pytest tests/ -v
@@ -12,8 +12,10 @@ format:
 check: lint test
 	@echo "All checks passed!"
 
-local-install:
+install:
 	uv tool install --force --reinstall .
+
+local-install: install
 
 setup:
 	pre-commit install
