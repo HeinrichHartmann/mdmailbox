@@ -168,6 +168,8 @@ def help():
 
 def _format_validation_preview(email: Email, validation_result) -> str:
     """Format the email preview with inline validation feedback."""
+    from pathlib import Path as PathlibPath
+
     lines = ["═" * 66]
 
     # Group validation items by field for inline display
@@ -245,6 +247,17 @@ def _format_validation_preview(email: Email, validation_result) -> str:
             )
         else:
             lines.append(f" In-Reply-To: {email.in_reply_to}")
+
+    if email.attachments:
+        att_items = items_by_field.get("attachments", [])
+        lines.append(f" Attachments: {len(email.attachments)} file(s)")
+        for i, path in enumerate(email.attachments):
+            display_name = PathlibPath(path).expanduser().name
+            item = att_items[i] if i < len(att_items) else None
+            if item:
+                lines.append(f"             {display_name} {item.symbol} {item.message}")
+            else:
+                lines.append(f"             {display_name}")
 
     lines.append("─" * 66)
     lines.append("")
