@@ -1154,6 +1154,371 @@ Body.
         assert all("level" in item and "field" in item for item in d["items"])
 
 
+class TestAttachments:
+    """Tests for email attachment functionality."""
+
+    def test_parse_email_with_single_attachment(self):
+        """Test parsing email with single attachment (string format)."""
+        text = """---
+from: sender@example.com
+to: recipient@example.com
+subject: With Attachment
+attachments: ./test.pdf
+---
+
+Please see attached.
+"""
+        email = Email.from_string(text)
+
+        assert email.attachments == ["./test.pdf"]
+
+    def test_parse_email_with_multiple_attachments(self):
+        """Test parsing email with multiple attachments (list format)."""
+        text = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Multiple Attachments
+attachments:
+  - ./report.pdf
+  - ~/docs/data.xlsx
+  - /tmp/image.png
+---
+
+Multiple files attached.
+"""
+        email = Email.from_string(text)
+
+        assert len(email.attachments) == 3
+        assert "./report.pdf" in email.attachments
+        assert "~/docs/data.xlsx" in email.attachments
+        assert "/tmp/image.png" in email.attachments
+
+    def test_roundtrip_with_single_attachment(self):
+        """Test that single attachment survives serialization roundtrip."""
+        original = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+attachments: ./file.pdf
+---
+
+Body.
+"""
+        email = Email.from_string(original)
+        serialized = email.to_string()
+        reparsed = Email.from_string(serialized)
+
+        assert reparsed.attachments == ["./file.pdf"]
+
+    def test_roundtrip_with_multiple_attachments(self):
+        """Test that multiple attachments survive serialization roundtrip."""
+        original = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+attachments:
+  - file1.pdf
+  - file2.docx
+---
+
+Body.
+"""
+        email = Email.from_string(original)
+        serialized = email.to_string()
+        reparsed = Email.from_string(serialized)
+
+        assert len(reparsed.attachments) == 2
+        assert reparsed.attachments == email.attachments
+
+    def test_email_without_attachments(self):
+        """Test email without attachments field has empty list."""
+        text = """---
+from: sender@example.com
+to: recipient@example.com
+subject: No attachments
+---
+
+Body.
+"""
+        email = Email.from_string(text)
+
+        assert email.attachments == []
+
+    def test_to_mime_without_attachments(self):
+        """Test MIME conversion without attachments is simple message."""
+        text = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Simple
+---
+
+Body text.
+"""
+        email = Email.from_string(text)
+        mime = email.to_mime()
+
+        # Should NOT be multipart if no attachments
+        assert not mime.is_multipart()
+        assert mime["Subject"] == "Simple"
+
+    def test_to_mime_with_attachments_creates_multipart(self, tmp_path):
+        """Test MIME conversion with attachments creates multipart message."""
+        # Create test files
+        file1 = tmp_path / "test.txt"
+        file1.write_text("Test content")
+
+        file2 = tmp_path / "data.bin"
+        file2.write_bytes(b"\x00\x01\x02\x03")
+
+        text = f"""---
+from: sender@example.com
+to: recipient@example.com
+subject: MIME Test
+attachments:
+  - {file1}
+  - {file2}
+---
+
+Body text.
+"""
+        email = Email.from_string(text)
+        mime = email.to_mime()
+
+        # Should be multipart
+        assert mime.is_multipart()
+
+        # Check parts
+        parts = list(mime.iter_parts())
+        assert len(parts) >= 3  # body + 2 attachments
+
+        # Verify filenames in attachments
+        filenames = [part.get_filename() for part in parts if part.get_filename()]
+        assert "test.txt" in filenames
+        assert "data.bin" in filenames
+
+    def test_validate_attachments_file_not_found(self):
+        """Test validation catches missing attachment files."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        content = """---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+attachments: /nonexistent/file.pdf
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [i for i in result.items if i.field == "attachments"]
+        assert any("not found" in e.message for e in errors)
+
+    def test_validate_attachments_is_directory(self, tmp_path):
+        """Test validation catches when attachment is a directory."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        test_dir = tmp_path / "testdir"
+        test_dir.mkdir()
+
+        content = f"""---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+attachments: {test_dir}
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [i for i in result.items if i.field == "attachments"]
+        assert any("directory" in e.message for e in errors)
+
+    def test_validate_attachments_empty_file(self, tmp_path):
+        """Test validation catches empty (0 byte) files."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        empty_file = tmp_path / "empty.txt"
+        empty_file.write_bytes(b"")
+
+        content = f"""---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+attachments: {empty_file}
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        assert result.has_errors
+        errors = [i for i in result.items if i.field == "attachments"]
+        assert any("empty" in e.message for e in errors)
+
+    def test_validate_attachments_with_real_files(self, tmp_path):
+        """Test validation passes with real files and shows metadata."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        # Create test files
+        small_file = tmp_path / "small.txt"
+        small_file.write_text("Small content")
+
+        medium_file = tmp_path / "medium.pdf"
+        medium_file.write_bytes(b"PDF" * 1000)
+
+        content = f"""---
+from: sender@example.com
+to: recipient@example.com
+subject: Test
+attachments:
+  - {small_file}
+  - {medium_file}
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        # Should not have errors for file validation
+        file_errors = [
+            i for i in result.items
+            if i.field == "attachments"
+            and i.level.value == "error"
+            and "not found" in i.message
+        ]
+        assert len(file_errors) == 0
+
+        # Should have OK status for the attachments
+        att_items = [i for i in result.items if i.field == "attachments"]
+        assert len(att_items) > 0
+
+    def test_validate_large_attachment_warning(self, tmp_path):
+        """Test validation warns about large attachments (>10MB)."""
+        from mdmailbox.validate import validate_email_string, ValidationContext
+
+        # Create 15 MB file
+        large_file = tmp_path / "large.bin"
+        large_file.write_bytes(b"x" * (15 * 1024 * 1024))
+
+        content = f"""---
+from: sender@example.com
+to: recipient@example.com
+subject: Large File
+attachments: {large_file}
+---
+
+Body.
+"""
+        result = validate_email_string(content, ValidationContext())
+
+        # Should have warning for large file
+        warnings = [
+            i for i in result.items
+            if i.field == "attachments" and i.level.value == "warning"
+        ]
+        assert len(warnings) > 0
+        assert any("large" in w.message.lower() for w in warnings)
+
+    def test_send_email_with_attachment_integrates_with_smtp(self, smtpd, tmp_path):
+        """Integration test: send email with attachment through SMTP."""
+        from mdmailbox.authinfo import Credential
+
+        # Create test file
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"PDF content here")
+
+        email = Email.from_string(f"""---
+from: sender@example.com
+to: recipient@example.com
+subject: With Attachment
+attachments: {test_file}
+---
+
+See attached.
+""")
+
+        credential = Credential(
+            machine=smtpd.hostname,
+            login="sender@example.com",
+            password="testpass",
+        )
+
+        result = send_email(
+            email,
+            credential=credential,
+            port=smtpd.port,
+            use_tls=False,
+        )
+
+        assert result.success
+        assert result.message_id is not None
+
+        # Verify message was received and is multipart
+        assert len(smtpd.messages) == 1
+        msg = smtpd.messages[0]
+        assert msg.is_multipart()
+
+        # Verify attachment is in message
+        filenames = [
+            part.get_filename()
+            for part in msg.iter_parts()
+            if part.get_filename()
+        ]
+        assert "test.pdf" in filenames
+
+    def test_send_email_with_multiple_attachments(self, smtpd, tmp_path):
+        """Test sending email with multiple attachments."""
+        from mdmailbox.authinfo import Credential
+
+        # Create test files
+        file1 = tmp_path / "doc.txt"
+        file1.write_text("Document")
+
+        file2 = tmp_path / "data.csv"
+        file2.write_text("col1,col2\n1,2")
+
+        email = Email.from_string(f"""---
+from: sender@example.com
+to: recipient@example.com
+subject: Multiple Files
+attachments:
+  - {file1}
+  - {file2}
+---
+
+Two attachments.
+""")
+
+        credential = Credential(
+            machine=smtpd.hostname,
+            login="sender@example.com",
+            password="testpass",
+        )
+
+        result = send_email(
+            email,
+            credential=credential,
+            port=smtpd.port,
+            use_tls=False,
+        )
+
+        assert result.success
+
+        # Verify both attachments received
+        msg = smtpd.messages[0]
+        filenames = [
+            part.get_filename()
+            for part in msg.iter_parts()
+            if part.get_filename()
+        ]
+        assert "doc.txt" in filenames
+        assert "data.csv" in filenames
+
+
 class TestAuditTrail:
     """Tests for send audit trail functionality."""
 
