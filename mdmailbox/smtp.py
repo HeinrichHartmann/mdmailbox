@@ -111,7 +111,7 @@ def send_email(
         return SendResult(
             success=True,
             message="Email sent successfully",
-            message_id=mime_msg["Message-ID"],
+            message_id=str(mime_msg["Message-ID"]),
             smtp_host=credential.machine,
             smtp_port=port,
             smtp_response=smtp_response,
