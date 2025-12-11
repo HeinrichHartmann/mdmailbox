@@ -50,13 +50,14 @@ def send_email(
 
     # Look up credential if not provided
     if credential is None:
-        log_msg(f"Looking up credentials for {email.from_addr}")
-        credential = find_credential_by_email(email.from_addr, authinfo_path)
+        email_to_lookup = email.from_email  # Extract plain email address
+        log_msg(f"Looking up credentials for {email_to_lookup}")
+        credential = find_credential_by_email(email_to_lookup, authinfo_path)
         if credential is None:
-            log_msg(f"ERROR: No credentials found for {email.from_addr}")
+            log_msg(f"ERROR: No credentials found for {email_to_lookup}")
             return SendResult(
                 success=False,
-                message=f"No credentials found for {email.from_addr} in .authinfo",
+                message=f"No credentials found for {email_to_lookup} in .authinfo",
                 log=log,
             )
         log_msg(f"Found credentials: {credential.login} via {credential.machine}")

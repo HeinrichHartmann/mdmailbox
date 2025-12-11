@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 from email.message import EmailMessage
-from email.utils import formatdate, make_msgid
+from email.utils import formatdate, make_msgid, parseaddr
 import yaml
 
 
@@ -31,6 +31,12 @@ class Email:
 
     # Source file path (if loaded from file)
     source_path: Path | None = None
+
+    @property
+    def from_email(self) -> str:
+        """Extract just the email address from from_addr (handles display names)."""
+        display_name, email_addr = parseaddr(self.from_addr)
+        return email_addr if email_addr else self.from_addr
 
     @classmethod
     def from_file(cls, path: Path | str) -> "Email":

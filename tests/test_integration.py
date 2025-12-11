@@ -236,6 +236,68 @@ Body content here.
         assert reparsed.subject == email.subject
         assert reparsed.body == email.body
 
+    def test_parse_display_name_in_from(self):
+        """Test that display names in from field are preserved."""
+        text = """---
+from: John Doe <john@example.com>
+to: recipient@example.com
+subject: Display Name Test
+---
+
+Body here.
+"""
+        email = Email.from_string(text)
+
+        assert email.from_addr == "John Doe <john@example.com>"
+        assert email.to == ["recipient@example.com"]
+
+    def test_from_email_property_extracts_plain_address(self):
+        """Test that from_email property extracts plain email from display name."""
+        text = """---
+from: Alice Smith <alice@example.com>
+to: bob@example.com
+subject: Test
+---
+
+Body.
+"""
+        email = Email.from_string(text)
+
+        assert email.from_email == "alice@example.com"
+        assert email.from_addr == "Alice Smith <alice@example.com>"
+
+    def test_from_email_property_with_plain_address(self):
+        """Test that from_email works with plain addresses too."""
+        text = """---
+from: bob@example.com
+to: alice@example.com
+subject: Test
+---
+
+Body.
+"""
+        email = Email.from_string(text)
+
+        assert email.from_email == "bob@example.com"
+        assert email.from_addr == "bob@example.com"
+
+    def test_roundtrip_preserves_display_name(self):
+        """Test that roundtrip load/save preserves display names."""
+        original = """---
+from: Charlie Brown <charlie@example.com>
+to: recipient@example.com
+subject: Roundtrip with Display Name
+---
+
+Body content.
+"""
+        email = Email.from_string(original)
+        serialized = email.to_string()
+        reparsed = Email.from_string(serialized)
+
+        assert reparsed.from_addr == "Charlie Brown <charlie@example.com>"
+        assert reparsed.from_email == "charlie@example.com"
+
 
 class TestSMTPIntegration:
     """Integration tests using smtpdfix local SMTP server."""
@@ -355,6 +417,46 @@ This should not be sent.
 
         assert not result.success
         assert "No credentials found" in result.message
+
+    def test_send_with_display_name_in_from(self, smtpd, tmp_path):
+        """End-to-end test: send email with display name in from field.
+
+        This verifies the complete flow: email with display name ->
+        credential lookup via plain email -> SMTP send -> received by server.
+        """
+        # Create authinfo pointing to test server
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            f"machine {smtpd.hostname} login sender@example.com password testpass\n"
+        )
+
+        # Email with display name in from field
+        email = Email.from_string("""---
+from: John Smith <sender@example.com>
+to: recipient@example.com
+subject: Test with Display Name
+---
+
+This email has a display name in the from field.
+""")
+
+        # Send using authinfo lookup - should extract plain email for credential lookup
+        result = send_email(
+            email,
+            authinfo_path=authinfo,
+            port=smtpd.port,
+            use_tls=False,
+        )
+
+        assert result.success, f"Send failed: {result.message}"
+        assert result.message_id is not None
+
+        # Verify message was received by SMTP server with full from address
+        assert len(smtpd.messages) == 1
+        msg = smtpd.messages[0]
+        assert msg["Subject"] == "Test with Display Name"
+        assert msg["From"] == "John Smith <sender@example.com>"
+        assert msg["To"] == "recipient@example.com"
 
 
 class TestImporter:

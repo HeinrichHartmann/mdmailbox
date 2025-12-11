@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from email.utils import parseaddr
 
 
 class ValidationLevel(Enum):
@@ -110,9 +111,21 @@ class HeaderValidator:
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-def is_valid_email(email: str) -> bool:
-    """Check if string is a valid email format."""
-    return bool(EMAIL_REGEX.match(email.strip()))
+def is_valid_email(email_str: str) -> bool:
+    """Check if string is a valid email format.
+
+    Supports both plain addresses (user@example.com) and
+    addresses with display names (Display Name <user@example.com>).
+    """
+    # Extract email address from potential display name format
+    display_name, email_addr = parseaddr(email_str.strip())
+
+    # If parseaddr found an email address in angle brackets, use that
+    if email_addr:
+        return bool(EMAIL_REGEX.match(email_addr))
+
+    # Otherwise validate the original string as plain email
+    return bool(EMAIL_REGEX.match(email_str.strip()))
 
 
 class FromValidator(HeaderValidator):
@@ -129,10 +142,14 @@ class FromValidator(HeaderValidator):
             result.error(field, value, "invalid email format")
             return
 
+        # Extract email address (handles display name format)
+        display_name, email_addr = parseaddr(value.strip())
+        lookup_email = email_addr if email_addr else value
+
         # Check credentials
         from .authinfo import find_credential_by_email
 
-        cred = find_credential_by_email(value, ctx.authinfo_path)
+        cred = find_credential_by_email(lookup_email, ctx.authinfo_path)
         if cred:
             result.ok(field, value, f"credentials found ({cred.machine})")
         else:
