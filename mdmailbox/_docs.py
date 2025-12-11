@@ -145,7 +145,7 @@ mdmailbox credentials --email you@gmail.com
 
 ## File Format
 
-Every email is a text file with YAML frontmatter:
+Every email is a text file with YAML frontmatter followed by the email body:
 
 ```yaml
 ---
@@ -155,12 +155,32 @@ subject: Subject line
 cc: optional@example.com
 date: 2025-12-08T15:30:00+01:00
 message-id: <abc123@mail.example.com>
+attachments:
+  - ./report.pdf
+  - ~/documents/data.xlsx
 ---
 
 Body content goes here.
 ```
 
-### Multiple recipients
+### Required Fields
+
+- `from` - Sender email address (supports display names: "John Doe <john@example.com>")
+- `to` - Recipient(s), can be string or list
+- `subject` - Email subject
+
+### Optional Fields
+
+- `cc` - Carbon copy recipient(s)
+- `bcc` - Blind carbon copy recipient(s)
+- `date` - ISO 8601 or RFC 2822 format
+- `message-id` - Unique message identifier
+- `in-reply-to` - Message-ID being replied to
+- `references` - List of message-IDs for threading
+- `reply-to` - Reply-to address
+- `attachments` - Files to attach (see below)
+
+### Multiple Recipients
 
 ```yaml
 ---
@@ -170,6 +190,45 @@ to:
 cc: team@example.com
 ---
 ```
+
+### Attachments
+
+Attach files to emails by listing their paths. Paths support:
+- Relative paths: `./report.pdf`
+- Home directory: `~/documents/data.xlsx`
+- Absolute paths: `/abs/path/file.pdf`
+
+Single attachment (scalar):
+```yaml
+attachments: ./report.pdf
+```
+
+Multiple attachments (list):
+```yaml
+attachments:
+  - ./report.pdf
+  - ~/documents/data.xlsx
+  - /tmp/image.png
+```
+
+**Validation rules:**
+- Files must exist (error if not found)
+- Cannot attach directories (error if path is directory)
+- Empty files are rejected (0 bytes = error)
+- Large files (>10MB) trigger warnings
+- MIME type is auto-detected
+
+### Display Names
+
+The `from` field and recipient fields support RFC 5322 display names:
+
+```yaml
+from: John Doe <john@example.com>
+to: Alice Smith <alice@example.com>
+cc: "Bob Johnson (Manager)" <bob@example.com>
+```
+
+Display names are preserved through save/load cycles.
 
 ## Directory Structure
 
