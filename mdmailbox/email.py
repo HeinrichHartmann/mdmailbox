@@ -24,6 +24,7 @@ class Email:
     date: str | None = None
     in_reply_to: str | None = None
     references: list[str] = field(default_factory=list)
+    attachments: list[str] = field(default_factory=list)
 
     # Import metadata
     account: str | None = None          # Source account (e.g., "gmail-hhartmann1729")
@@ -85,6 +86,11 @@ class Email:
         if isinstance(references, str):
             references = [references]
 
+        # Normalize 'attachments' to list
+        attachments = headers.get("attachments", [])
+        if isinstance(attachments, str):
+            attachments = [attachments]
+
         return cls(
             from_addr=headers.get("from", ""),
             to=to,
@@ -97,12 +103,15 @@ class Email:
             date=headers.get("date"),
             in_reply_to=headers.get("in-reply-to"),
             references=references,
+            attachments=attachments,
             account=headers.get("account"),
             original_hash=headers.get("original-hash"),
         )
 
     def to_mime(self) -> EmailMessage:
         """Convert to stdlib EmailMessage for sending."""
+        import mimetypes
+
         msg = EmailMessage()
 
         msg["From"] = self.from_addr
@@ -127,7 +136,32 @@ class Email:
         # Use current date if not specified
         msg["Date"] = self.date or formatdate(localtime=True)
 
+        # Set body text
         msg.set_content(self.body)
+
+        # Add attachments if present
+        if self.attachments:
+            for attachment_path_str in self.attachments:
+                # Resolve path (expanduser for ~)
+                attachment_path = Path(attachment_path_str).expanduser()
+
+                # Read file
+                content = attachment_path.read_bytes()
+
+                # Guess MIME type
+                mime_type, _ = mimetypes.guess_type(str(attachment_path))
+                if mime_type:
+                    maintype, subtype = mime_type.split('/', 1)
+                else:
+                    maintype, subtype = 'application', 'octet-stream'
+
+                # Add as attachment
+                msg.add_attachment(
+                    content,
+                    maintype=maintype,
+                    subtype=subtype,
+                    filename=attachment_path.name
+                )
 
         return msg
 
@@ -153,6 +187,11 @@ class Email:
             headers["in-reply-to"] = self.in_reply_to
         if self.references:
             headers["references"] = self.references
+        if self.attachments:
+            headers["attachments"] = (
+                self.attachments if len(self.attachments) > 1
+                else self.attachments[0]
+            )
         if self.account:
             headers["account"] = self.account
         if self.original_hash:

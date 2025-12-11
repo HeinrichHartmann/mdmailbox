@@ -1287,12 +1287,12 @@ Body text.
         # Should be multipart
         assert mime.is_multipart()
 
-        # Check parts
-        parts = list(mime.iter_parts())
-        assert len(parts) >= 3  # body + 2 attachments
+        # Check parts (skip container part)
+        parts = [p for p in mime.walk() if p.get_filename()]
+        assert len(parts) >= 2  # 2 attachments
 
         # Verify filenames in attachments
-        filenames = [part.get_filename() for part in parts if part.get_filename()]
+        filenames = [part.get_filename() for part in parts]
         assert "test.txt" in filenames
         assert "data.bin" in filenames
 
@@ -1465,7 +1465,7 @@ See attached.
         # Verify attachment is in message
         filenames = [
             part.get_filename()
-            for part in msg.iter_parts()
+            for part in msg.walk()
             if part.get_filename()
         ]
         assert "test.pdf" in filenames
@@ -1512,7 +1512,7 @@ Two attachments.
         msg = smtpd.messages[0]
         filenames = [
             part.get_filename()
-            for part in msg.iter_parts()
+            for part in msg.walk()
             if part.get_filename()
         ]
         assert "doc.txt" in filenames

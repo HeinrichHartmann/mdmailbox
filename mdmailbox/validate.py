@@ -250,6 +250,89 @@ class MetadataValidator(HeaderValidator):
             result.ok(field, str(value), "metadata")
 
 
+class AttachmentsValidator(HeaderValidator):
+    """Validates attachments: file existence, size, type."""
+
+    # Size threshold for warnings (10 MB)
+    SIZE_WARNING_THRESHOLD = 10 * 1024 * 1024
+
+    def validate(self, field, value, ctx, result):
+        if not value:
+            return  # Optional field
+
+        import mimetypes
+        from pathlib import Path
+
+        # Normalize to list
+        attachments = value if isinstance(value, list) else [value]
+
+        total_size = 0
+
+        for attachment_str in attachments:
+            # Resolve path
+            try:
+                path = Path(attachment_str).expanduser()
+
+                # Check if exists
+                if not path.exists():
+                    result.error(field, attachment_str, "file not found")
+                    continue
+
+                # Check if directory
+                if path.is_dir():
+                    result.error(field, attachment_str, "is a directory")
+                    continue
+
+                # Get file info
+                try:
+                    stat = path.stat()
+                    size = stat.st_size
+                except PermissionError:
+                    result.error(field, attachment_str, "permission denied")
+                    continue
+
+                # Check for empty files
+                if size == 0:
+                    result.error(field, attachment_str, "file is empty (0 bytes)")
+                    continue
+
+                total_size += size
+
+                # Format size for display
+                if size < 1024:
+                    size_str = f"{size} B"
+                elif size < 1024 * 1024:
+                    size_str = f"{size / 1024:.1f} KB"
+                else:
+                    size_str = f"{size / (1024 * 1024):.1f} MB"
+
+                # Detect MIME type
+                mime_type, _ = mimetypes.guess_type(str(path))
+                type_str = mime_type or "unknown type"
+
+                # Warning for large files
+                if size > self.SIZE_WARNING_THRESHOLD:
+                    result.warning(
+                        field,
+                        path.name,
+                        f"{size_str}, {type_str} - large file",
+                    )
+                else:
+                    result.ok(field, path.name, f"{size_str}, {type_str}")
+
+            except Exception as e:
+                result.error(field, attachment_str, f"error: {e}")
+
+        # Add summary for total size
+        if total_size > 0:
+            if total_size < 1024 * 1024:
+                total_str = f"{total_size / 1024:.1f} KB"
+            else:
+                total_str = f"{total_size / (1024 * 1024):.1f} MB"
+
+            result.ok(field, None, f"total: {total_str}")
+
+
 # Single source of truth: header name -> validator
 HEADER_VALIDATORS: dict[str, HeaderValidator] = {
     "from": FromValidator(required=True),
@@ -264,6 +347,7 @@ HEADER_VALIDATORS: dict[str, HeaderValidator] = {
     "date": DateValidator(),
     "account": MetadataValidator(),
     "original-hash": MetadataValidator(),
+    "attachments": AttachmentsValidator(),
 }
 
 
@@ -315,6 +399,7 @@ def validate_email_string(
         "date": email.date,
         "account": email.account,
         "original-hash": email.original_hash,
+        "attachments": email.attachments,
     }
 
     for header, validator in HEADER_VALIDATORS.items():
