@@ -294,6 +294,43 @@ if result.success:
     print(f"Sent! Message-ID: {result.message_id}")
 ```
 
+## Emacs Integration
+
+An Emacs major mode (`mdmailbox-mode`) is included for composing and sending emails directly from Emacs.
+
+### Quick Setup
+
+**DOOM Emacs:**
+```bash
+# Copy emacs/ to DOOM modules
+mkdir -p ~/.config/doom/modules/lang/mdmailbox
+cp emacs/* ~/.config/doom/modules/lang/mdmailbox/
+```
+
+Add to `~/.config/doom/init.el`:
+```elisp
+:lang
+(mdmailbox)
+```
+
+Then: `doom sync`
+
+**Other Emacs:**
+```elisp
+(add-to-list 'load-path "~/.emacs.d/lisp/mdmailbox")
+(require 'mdmailbox)
+```
+
+### Usage
+
+1. Open a draft: `~/Mdmailbox/drafts/hello.md`
+2. `mdmailbox-mode` loads automatically
+3. Preview: `C-c C-p` - validate with `mdmailbox send --dry-run`
+4. Send: `C-c C-c` - send with confirmation
+5. Abort: `C-c C-k` - discard draft
+
+See [emacs/README.md](emacs/README.md) for full documentation and installation options.
+
 ## Development
 
 ```bash
