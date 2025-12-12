@@ -1,6 +1,6 @@
 [project]
 name = "mdmailbox"
-version = "0.1.10"
+version = "0.1.11"
 description = "Email as plain text files with YAML frontmatter"
 readme = "README.md"
 requires-python = ">=3.13"
