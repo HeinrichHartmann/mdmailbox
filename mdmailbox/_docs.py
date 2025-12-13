@@ -54,12 +54,19 @@ uv tool install mdmailbox
 
 ### 1. Configure credentials
 
-Create `~/.authinfo` with your SMTP credentials:
+Create `~/.authinfo` with your SMTP and IMAP credentials:
 
 ```
+# Gmail - same app password for SMTP and IMAP
 machine smtp.gmail.com login you@gmail.com password your-app-password
+machine imap.gmail.com login you@gmail.com password your-app-password
+
+# Migadu
 machine smtp.migadu.com login you@migadu.com password your-password
+machine imap.migadu.com login you@migadu.com password your-password
 ```
+
+The IMAP credentials allow sent emails to appear in your mail client's sent folder.
 
 ### 2. Create a draft
 
@@ -266,6 +273,31 @@ Set a custom path via environment variable:
 ```bash
 export AUTHINFO_FILE=~/secrets/.authinfo
 ```
+
+### Sent Folder Upload (IMAP)
+
+After successfully sending an email via SMTP, mdmailbox automatically uploads a copy to your IMAP "Sent" folder so sent emails appear in your mail client.
+
+**Setup**: Add IMAP credentials to `.authinfo` alongside SMTP credentials:
+
+```
+# Gmail example
+machine smtp.gmail.com login you@gmail.com password your-app-password
+machine imap.gmail.com login you@gmail.com password your-app-password
+
+# Migadu example
+machine smtp.migadu.com login you@migadu.com password your-password
+machine imap.migadu.com login you@migadu.com password your-password
+```
+
+**How it works:**
+1. Email is sent via SMTP (e.g., `smtp.gmail.com`)
+2. mdmailbox converts the SMTP hostname to IMAP (e.g., `imap.gmail.com`)
+3. Looks up IMAP credentials in `.authinfo`
+4. Uploads a copy to the "Sent" folder via IMAP APPEND
+5. If IMAP credentials not found, logs a warning but send still succeeds
+
+**Note:** Gmail and most email providers use the same app password for both SMTP and IMAP.
 
 ## Python API
 
