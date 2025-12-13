@@ -1,4 +1,4 @@
-"""SMTP client for sending emails."""
+"""Email sending via SMTP with automatic IMAP sent folder upload."""
 
 import smtplib
 from dataclasses import dataclass, field
@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .authinfo import Credential, find_credential_by_email
 from .email import Email
+from .imap import find_imap_credential, upload_to_sent_folder
 
 
 @dataclass
@@ -20,6 +21,10 @@ class SendResult:
     smtp_port: int | None = None
     smtp_response: str | None = None
     sent_at: datetime | None = None
+    imap_uploaded: bool = False
+    imap_host: str | None = None
+    imap_folder: str | None = None
+    imap_uid: str | None = None
     log: list[str] = field(default_factory=list)
 
 
@@ -30,7 +35,7 @@ def send_email(
     port: int = 587,
     use_tls: bool = True,
 ) -> SendResult:
-    """Send an email via SMTP.
+    """Send an email via SMTP and upload to IMAP sent folder.
 
     Args:
         email: The Email object to send
@@ -40,7 +45,12 @@ def send_email(
         use_tls: Whether to use STARTTLS (default True)
 
     Returns:
-        SendResult with success status, message, and audit log
+        SendResult with success status, message, IMAP upload status, and audit log
+
+    Note:
+        After successful SMTP send, attempts to upload email to IMAP sent folder.
+        IMAP credentials are looked up by converting SMTP host to IMAP host.
+        If IMAP credentials not found, logs warning but send still succeeds.
     """
     log: list[str] = []
 
@@ -108,6 +118,45 @@ def send_email(
                 # send_errors contains failed recipients
                 log_msg(f"WARNING: Some recipients failed: {send_errors}")
 
+        # SMTP send successful - now try to upload to IMAP sent folder
+        log_msg("SMTP send successful")
+
+        # Try to find IMAP credentials
+        imap_credential = find_imap_credential(
+            email.from_email, credential.machine, authinfo_path
+        )
+
+        imap_uploaded = False
+        imap_host = None
+        imap_folder = None
+        imap_uid = None
+
+        if imap_credential:
+            log_msg(f"Found IMAP credentials for {imap_credential.machine}")
+            log_msg("Uploading to IMAP sent folder")
+
+            # Convert MIME message to string
+            mime_str = mime_msg.as_string()
+
+            # Upload to sent folder
+            imap_result = upload_to_sent_folder(
+                mime_str, imap_credential, sent_folder="Sent"
+            )
+
+            # Append IMAP logs
+            log.extend(imap_result.log)
+
+            if imap_result.success:
+                log_msg("Successfully uploaded to IMAP sent folder")
+                imap_uploaded = True
+                imap_host = imap_result.imap_host
+                imap_folder = imap_result.folder
+                imap_uid = imap_result.uid
+            else:
+                log_msg(f"WARNING: IMAP upload failed: {imap_result.message}")
+        else:
+            log_msg("WARNING: No IMAP credentials found - email not uploaded to sent folder")
+
         return SendResult(
             success=True,
             message="Email sent successfully",
@@ -116,6 +165,10 @@ def send_email(
             smtp_port=port,
             smtp_response=smtp_response,
             sent_at=sent_at,
+            imap_uploaded=imap_uploaded,
+            imap_host=imap_host,
+            imap_folder=imap_folder,
+            imap_uid=imap_uid,
             log=log,
         )
 

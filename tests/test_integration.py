@@ -1685,3 +1685,59 @@ Test body.
         assert result.log
         assert any("Looking up credentials" in line for line in result.log)
         assert any("ERROR" in line or "No credentials" in line for line in result.log)
+
+
+class TestIMAP:
+    """Tests for IMAP sent folder upload."""
+
+    def test_convert_smtp_to_imap(self):
+        """Test SMTP to IMAP hostname conversion."""
+        from mdmailbox.imap import convert_smtp_to_imap
+
+        assert convert_smtp_to_imap("smtp.gmail.com") == "imap.gmail.com"
+        assert convert_smtp_to_imap("smtp.migadu.com") == "imap.migadu.com"
+        assert convert_smtp_to_imap("smtp.example.com") == "imap.example.com"
+
+    def test_find_imap_credential(self, tmp_path):
+        """Test finding IMAP credential from authinfo."""
+        from mdmailbox.imap import find_imap_credential
+
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text(
+            "machine imap.gmail.com login user@gmail.com password secret123\n"
+        )
+
+        cred = find_imap_credential("user@gmail.com", "smtp.gmail.com", authinfo)
+
+        assert cred is not None
+        assert cred.machine == "imap.gmail.com"
+        assert cred.login == "user@gmail.com"
+        assert cred.password == "secret123"
+
+    def test_find_imap_credential_not_found(self, tmp_path):
+        """Test finding IMAP credential when not configured."""
+        from mdmailbox.imap import find_imap_credential
+
+        authinfo = tmp_path / ".authinfo"
+        authinfo.write_text("machine smtp.gmail.com login user@gmail.com password secret123\n")
+
+        cred = find_imap_credential("user@gmail.com", "smtp.gmail.com", authinfo)
+
+        assert cred is None
+
+    def test_imap_upload_result_structure(self):
+        """Test IMAPUploadResult dataclass."""
+        from mdmailbox.imap import IMAPUploadResult
+
+        result = IMAPUploadResult(
+            success=True,
+            message="Test",
+            imap_host="imap.example.com",
+            folder="Sent",
+        )
+
+        assert result.success is True
+        assert result.message == "Test"
+        assert result.imap_host == "imap.example.com"
+        assert result.folder == "Sent"
+        assert result.log == []

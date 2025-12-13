@@ -89,17 +89,20 @@ def matches_wildcard(pattern: str, email: str) -> bool:
     return pattern_domain == email_domain
 
 
-def find_credential_by_email(email: str, path: Path | None = None) -> Credential | None:
-    """Find SMTP credential for a given email address.
+def find_credential_by_email(
+    email: str, path: Path | None = None, machine: str | None = None
+) -> Credential | None:
+    """Find credential for a given email address.
 
     Lookup order:
-    1. Exact match
+    1. Exact match (with optional machine filter)
     2. Gmail normalized match (dots and +suffix ignored)
     3. Wildcard domain match (*@domain.com)
 
     Args:
         email: The email address to find credentials for
         path: Path to .authinfo file. Defaults to ~/.authinfo or $AUTHINFO_FILE
+        machine: Optional machine/server hostname to filter by (e.g., "imap.gmail.com")
 
     Returns:
         Credential if found, None otherwise
@@ -115,6 +118,10 @@ def find_credential_by_email(email: str, path: Path | None = None) -> Credential
 
     credentials = parse_authinfo(path)
     normalized_email = normalize_gmail(email)
+
+    # Filter by machine if provided
+    if machine:
+        credentials = [c for c in credentials if c.machine == machine]
 
     # First try exact match
     for cred in credentials:
